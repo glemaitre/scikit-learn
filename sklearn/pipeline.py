@@ -16,12 +16,12 @@ import numpy as np
 from scipy import sparse
 
 from .base import BaseEstimator, TransformerMixin
-from .externals.joblib import Parallel, delayed
+from .externals.joblib import Parallel, delayed, Memory
 from .externals import six
 from .utils import tosequence
 from .utils.metaestimators import if_delegate_has_method
 
-__all__ = ['Pipeline', 'FeatureUnion']
+__all__ = ['Pipeline', 'CachedPipeline', 'FeatureUnion']
 
 
 class _BasePipeline(six.with_metaclass(ABCMeta, BaseEstimator)):
@@ -535,6 +535,108 @@ def _name_estimators(estimators):
             namecount[name] -= 1
 
     return list(zip(names, estimators))
+
+
+class CachedPipeline(Pipeline):
+    """A cached version of the Pipeline.
+
+    Sequentially apply a list of transforms and a final estimator.
+    Intermediate steps of the pipeline must be 'transforms', that is, they
+    must implement fit and transform methods.
+    The final estimator only needs to implement fit.
+    The intermediate transformers are cached.
+
+    The purpose of the pipeline is to assemble several steps that can be
+    cross-validated together while setting different parameters.
+    For this, it enables setting parameters of the various steps using their
+    names and the parameter name separated by a '__', as in the example below.
+    A step's estimator may be replaced entirely by setting the parameter
+    with its name to another estimator, or a transformer removed by setting
+    to None.
+
+    Read more in the :ref:`User Guide <pipeline>`.
+
+    Parameters
+    ----------
+    steps : list
+        List of (name, transform) tuples (implementing fit/transform) that are
+        chained, in the order in which they are chained, with the last object
+        an estimator.
+
+    memory : Instance of joblib.Memory or string (optional)
+        Used to cache the output of the computation of the tree.
+        By default, no caching is done. If a string is given, it is the
+        path to the caching directory.
+
+    Attributes
+    ----------
+    named_steps : dict
+        Read-only attribute to access any step parameter by user given name.
+        Keys are step names and values are steps parameters.
+
+    Examples
+    --------
+    """
+
+    def __init__(self, steps, memory=None):
+        self.memory = memory
+
+        super(CachedPipeline, self).__init__(steps)
+
+    def _fit(self, X, y=None, **fit_params):
+        self._validate_steps()
+        fit_params_steps = dict((name, {}) for name, step in self.steps
+                                if step is not None)
+        for pname, pval in six.iteritems(fit_params):
+            step, param = pname.split('__', 1)
+            fit_params_steps[step][param] = pval
+        Xt = X
+        for name, transform in self.steps[:-1]:
+            if transform is None:
+                pass
+            else:
+                Xt, transform = self._fit_transform_one(
+                    transform, name,
+                    None, Xt, y,
+                    **fit_params_steps[name])
+        if self._final_estimator is None:
+            return Xt, {}
+        return Xt, fit_params_steps[self.steps[-1][0]]
+
+    def fit(self, X, y=None, **fit_params):
+        """Fit the model
+
+        Fit all the transforms one after the other and transform the
+        data, then fit the transformed data using the final estimator.
+
+        Parameters
+        ----------
+        X : iterable
+            Training data. Must fulfill input requirements of first step of the
+            pipeline.
+
+        y : iterable, default=None
+            Training targets. Must fulfill label requirements for all steps of
+            the pipeline.
+
+        **fit_params : dict of string -> object
+            Parameters passed to the ``fit`` method of each step, where
+            each parameter name is prefixed such that parameter ``p`` for step
+            ``s`` has key ``s__p``.
+
+        Returns
+        -------
+        self : Pipeline
+            This estimator
+        """
+        memory = self.memory
+        if isinstance(memory, six.string_types) or memory is None:
+            memory = Memory(cachedir=memory, verbose=10)
+        self._fit_transform_one = memory.cache(_fit_transform_one)
+
+        super(CachedPipeline, self).fit(X, y, **fit_params)
+
+        return self
 
 
 def make_pipeline(*steps):
