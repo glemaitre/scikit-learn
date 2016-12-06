@@ -578,7 +578,7 @@ class CachedPipeline(Pipeline):
     --------
     """
 
-    def __init__(self, steps, memory=Memory(cachedir=None, verbose=10)):
+    def __init__(self, steps, memory=Memory(cachedir=None, verbose=0)):
         self.memory = memory
 
         super(CachedPipeline, self).__init__(steps)
@@ -593,7 +593,7 @@ class CachedPipeline(Pipeline):
         Xt = X
         memory = self.memory
         if isinstance(memory, six.string_types):
-            memory = Memory(cachedir=memory, verbose=10)
+            memory = Memory(cachedir=memory, verbose=0)
         for idx_tr, (name, transform) in enumerate(self.steps[:-1]):
             if transform is None:
                 pass
