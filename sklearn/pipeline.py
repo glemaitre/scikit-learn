@@ -594,7 +594,7 @@ class CachedPipeline(Pipeline):
         memory = self.memory
         if isinstance(memory, six.string_types):
             memory = Memory(cachedir=memory, verbose=10)
-        for name, transform in self.steps[:-1]:
+        for idx_tr, (name, transform) in enumerate(self.steps[:-1]):
             if transform is None:
                 pass
             else:
@@ -602,6 +602,7 @@ class CachedPipeline(Pipeline):
                     transform, name,
                     None, Xt, y,
                     **fit_params_steps[name])
+                self.steps[idx_tr] = (name, transform)
         if self._final_estimator is None:
             return Xt, {}
         return Xt, fit_params_steps[self.steps[-1][0]]
