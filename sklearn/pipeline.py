@@ -15,7 +15,7 @@ from abc import ABCMeta, abstractmethod
 import numpy as np
 from scipy import sparse
 
-from .base import BaseEstimator, TransformerMixin
+from .base import clone, BaseEstimator, TransformerMixin
 from .externals.joblib import Parallel, delayed, Memory
 from .externals import six
 from .utils import tosequence
@@ -586,8 +586,10 @@ class CachedPipeline(Pipeline):
         memory = self.memory
         if isinstance(memory, six.string_types):
             memory = Memory(cachedir=memory, verbose=0)
+        # Clone the transformer to maximize cache hits
+        clone_transformer = clone(transformer)
         Xt, transform = memory.cache(_fit_transform_one)(
-            transformer, name,
+            clone_transformer, name,
             None, X, y,
             **fit_params_trans)
         self.steps[idx_transform] = (name, transform)
