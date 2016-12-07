@@ -81,75 +81,13 @@ class _BasePipeline(six.with_metaclass(ABCMeta, BaseEstimator)):
             raise ValueError('Step names must not contain __: got '
                              '{0!r}'.format(invalid_names))
 
-
-class Pipeline(_BasePipeline):
-    """Pipeline of transforms with a final estimator.
-
-    Sequentially apply a list of transforms and a final estimator.
-    Intermediate steps of the pipeline must be 'transforms', that is, they
-    must implement fit and transform methods.
-    The final estimator only needs to implement fit.
-
-    The purpose of the pipeline is to assemble several steps that can be
-    cross-validated together while setting different parameters.
-    For this, it enables setting parameters of the various steps using their
-    names and the parameter name separated by a '__', as in the example below.
-    A step's estimator may be replaced entirely by setting the parameter
-    with its name to another estimator, or a transformer removed by setting
-    to None.
-
-    Read more in the :ref:`User Guide <pipeline>`.
-
-    Parameters
-    ----------
-    steps : list
-        List of (name, transform) tuples (implementing fit/transform) that are
-        chained, in the order in which they are chained, with the last object
-        an estimator.
-
-    Attributes
-    ----------
-    named_steps : dict
-        Read-only attribute to access any step parameter by user given name.
-        Keys are step names and values are steps parameters.
-
-    Examples
-    --------
-    >>> from sklearn import svm
-    >>> from sklearn.datasets import samples_generator
-    >>> from sklearn.feature_selection import SelectKBest
-    >>> from sklearn.feature_selection import f_regression
-    >>> from sklearn.pipeline import Pipeline
-    >>> # generate some data to play with
-    >>> X, y = samples_generator.make_classification(
-    ...     n_informative=5, n_redundant=0, random_state=42)
-    >>> # ANOVA SVM-C
-    >>> anova_filter = SelectKBest(f_regression, k=5)
-    >>> clf = svm.SVC(kernel='linear')
-    >>> anova_svm = Pipeline([('anova', anova_filter), ('svc', clf)])
-    >>> # You can set the parameters using the names issued
-    >>> # For instance, fit using a k of 10 in the SelectKBest
-    >>> # and a parameter 'C' of the svm
-    >>> anova_svm.set_params(anova__k=10, svc__C=.1).fit(X, y)
-    ...                                              # doctest: +ELLIPSIS
-    Pipeline(steps=[...])
-    >>> prediction = anova_svm.predict(X)
-    >>> anova_svm.score(X, y)                        # doctest: +ELLIPSIS
-    0.829...
-    >>> # getting the selected features chosen by anova_filter
-    >>> anova_svm.named_steps['anova'].get_support()
-    ... # doctest: +NORMALIZE_WHITESPACE
-    array([False, False,  True,  True, False, False, True,  True, False,
-           True,  False,  True,  True, False, True,  False, True, True,
-           False, False], dtype=bool)
+class _Pipeline(six.with_metaclass(ABCMeta, _BasePipeline)):
+    """Private abstract class for pipeline
     """
 
-    # BaseEstimator interface
-
-    def __init__(self, steps):
-        # shallow copy of steps
-        self.steps = tosequence(steps)
-        self._validate_steps()
+    @abstractmethod
+    def __init__(self):
+        pass
 
     def get_params(self, deep=True):
         """Get parameters for this estimator.
@@ -218,6 +156,11 @@ class Pipeline(_BasePipeline):
 
     # Estimator interface
 
+    @abstractmethod
+    def _fit_single_transform(self, transformer, name, idx_transform, X, y,
+                              **fit_params_trans):
+        pass
+
     def _fit(self, X, y=None, **fit_params):
         self._validate_steps()
         fit_params_steps = dict((name, {}) for name, step in self.steps
@@ -226,14 +169,12 @@ class Pipeline(_BasePipeline):
             step, param = pname.split('__', 1)
             fit_params_steps[step][param] = pval
         Xt = X
-        for name, transform in self.steps[:-1]:
+        for idx_tr, (name, transform) in enumerate(self.steps[:-1]):
             if transform is None:
                 pass
-            elif hasattr(transform, "fit_transform"):
-                Xt = transform.fit_transform(Xt, y, **fit_params_steps[name])
             else:
-                Xt = transform.fit(Xt, y, **fit_params_steps[name]) \
-                              .transform(Xt)
+                Xt, _ = self._fit_single_transform(transform, name, idx_tr, Xt,
+                                                   y, **fit_params_steps[name])
         if self._final_estimator is None:
             return Xt, {}
         return Xt, fit_params_steps[self.steps[-1][0]]
@@ -516,28 +457,85 @@ class Pipeline(_BasePipeline):
         return getattr(self.steps[0][1], '_pairwise', False)
 
 
-def _name_estimators(estimators):
-    """Generate names for estimators."""
+class Pipeline(_Pipeline):
+    """Pipeline of transforms with a final estimator.
 
-    names = [type(estimator).__name__.lower() for estimator in estimators]
-    namecount = defaultdict(int)
-    for est, name in zip(estimators, names):
-        namecount[name] += 1
+    Sequentially apply a list of transforms and a final estimator.
+    Intermediate steps of the pipeline must be 'transforms', that is, they
+    must implement fit and transform methods.
+    The final estimator only needs to implement fit.
 
-    for k, v in list(six.iteritems(namecount)):
-        if v == 1:
-            del namecount[k]
+    The purpose of the pipeline is to assemble several steps that can be
+    cross-validated together while setting different parameters.
+    For this, it enables setting parameters of the various steps using their
+    names and the parameter name separated by a '__', as in the example below.
+    A step's estimator may be replaced entirely by setting the parameter
+    with its name to another estimator, or a transformer removed by setting
+    to None.
 
-    for i in reversed(range(len(estimators))):
-        name = names[i]
-        if name in namecount:
-            names[i] += "-%d" % namecount[name]
-            namecount[name] -= 1
+    Read more in the :ref:`User Guide <pipeline>`.
 
-    return list(zip(names, estimators))
+    Parameters
+    ----------
+    steps : list
+        List of (name, transform) tuples (implementing fit/transform) that are
+        chained, in the order in which they are chained, with the last object
+        an estimator.
+
+    Attributes
+    ----------
+    named_steps : dict
+        Read-only attribute to access any step parameter by user given name.
+        Keys are step names and values are steps parameters.
+
+    Examples
+    --------
+    >>> from sklearn import svm
+    >>> from sklearn.datasets import samples_generator
+    >>> from sklearn.feature_selection import SelectKBest
+    >>> from sklearn.feature_selection import f_regression
+    >>> from sklearn.pipeline import Pipeline
+    >>> # generate some data to play with
+    >>> X, y = samples_generator.make_classification(
+    ...     n_informative=5, n_redundant=0, random_state=42)
+    >>> # ANOVA SVM-C
+    >>> anova_filter = SelectKBest(f_regression, k=5)
+    >>> clf = svm.SVC(kernel='linear')
+    >>> anova_svm = Pipeline([('anova', anova_filter), ('svc', clf)])
+    >>> # You can set the parameters using the names issued
+    >>> # For instance, fit using a k of 10 in the SelectKBest
+    >>> # and a parameter 'C' of the svm
+    >>> anova_svm.set_params(anova__k=10, svc__C=.1).fit(X, y)
+    ...                                              # doctest: +ELLIPSIS
+    Pipeline(steps=[...])
+    >>> prediction = anova_svm.predict(X)
+    >>> anova_svm.score(X, y)                        # doctest: +ELLIPSIS
+    0.829...
+    >>> # getting the selected features chosen by anova_filter
+    >>> anova_svm.named_steps['anova'].get_support()
+    ... # doctest: +NORMALIZE_WHITESPACE
+    array([False, False,  True,  True, False, False, True,  True, False,
+           True,  False,  True,  True, False, True,  False, True, True,
+           False, False], dtype=bool)
+    """
+
+    # BaseEstimator interface
+
+    def __init__(self, steps):
+        # shallow copy of steps
+        self.steps = tosequence(steps)
+        self._validate_steps()
+
+    # Estimator interface
+
+    def _fit_single_transform(self, transformer, name, idx_transform, X, y,
+                              **fit_params_trans):
+        Xt, transform = _fit_transform_one(transformer, name, None, X, y,
+                                           **fit_params_trans)
+        return Xt, transform
 
 
-class CachedPipeline(Pipeline):
+class CachedPipeline(_Pipeline):
     """A cached version of the Pipeline.
 
     Sequentially apply a list of transforms and a final estimator.
@@ -579,33 +577,44 @@ class CachedPipeline(Pipeline):
     """
 
     def __init__(self, steps, memory=Memory(cachedir=None, verbose=0)):
+        # shallow copy of steps
+        self.steps = tosequence(steps)
+        self._validate_steps()
         self.memory = memory
 
-        super(CachedPipeline, self).__init__(steps)
-
-    def _fit(self, X, y=None, **fit_params):
-        self._validate_steps()
-        fit_params_steps = dict((name, {}) for name, step in self.steps
-                                if step is not None)
-        for pname, pval in six.iteritems(fit_params):
-            step, param = pname.split('__', 1)
-            fit_params_steps[step][param] = pval
-        Xt = X
+    def _fit_single_transform(self, transformer, name, idx_transform, X, y,
+                              **fit_params_trans):
         memory = self.memory
         if isinstance(memory, six.string_types):
             memory = Memory(cachedir=memory, verbose=0)
-        for idx_tr, (name, transform) in enumerate(self.steps[:-1]):
-            if transform is None:
-                pass
-            else:
-                Xt, transform = memory.cache(_fit_transform_one)(
-                    transform, name,
-                    None, Xt, y,
-                    **fit_params_steps[name])
-                self.steps[idx_tr] = (name, transform)
-        if self._final_estimator is None:
-            return Xt, {}
-        return Xt, fit_params_steps[self.steps[-1][0]]
+        Xt, transform = memory.cache(_fit_transform_one)(
+            transformer, name,
+            None, X, y,
+            **fit_params_trans)
+        self.steps[idx_transform] = (name, transform)
+
+        return Xt, transform
+
+
+def _name_estimators(estimators):
+    """Generate names for estimators."""
+
+    names = [type(estimator).__name__.lower() for estimator in estimators]
+    namecount = defaultdict(int)
+    for est, name in zip(estimators, names):
+        namecount[name] += 1
+
+    for k, v in list(six.iteritems(namecount)):
+        if v == 1:
+            del namecount[k]
+
+    for i in reversed(range(len(estimators))):
+        name = names[i]
+        if name in namecount:
+            names[i] += "-%d" % namecount[name]
+            namecount[name] -= 1
+
+    return list(zip(names, estimators))
 
 
 def make_pipeline(*steps):
