@@ -536,7 +536,7 @@ class Pipeline(_Pipeline):
         return Xt, transform
 
 
-class CachedPipeline(_Pipeline):
+class CachedPipeline(Pipeline):
     """A cached version of the Pipeline.
 
     Sequentially apply a list of transforms and a final estimator.
@@ -578,10 +578,8 @@ class CachedPipeline(_Pipeline):
     """
 
     def __init__(self, steps, memory=Memory(cachedir=None, verbose=0)):
-        # shallow copy of steps
-        self.steps = tosequence(steps)
-        self._validate_steps()
         self.memory = memory
+        super(CachedPipeline, self).__init__(steps)
 
     def _fit_single_transform(self, transformer, name, idx_transform, X, y,
                               **fit_params_trans):
