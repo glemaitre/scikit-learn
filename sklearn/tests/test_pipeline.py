@@ -19,7 +19,7 @@ from sklearn.utils.testing import assert_array_equal
 from sklearn.utils.testing import assert_array_almost_equal
 from sklearn.utils.testing import assert_dict_equal
 
-from sklearn.base import clone, BaseEstimator, TransformerMixin
+from sklearn.base import clone, BaseEstimator
 from sklearn.pipeline import (Pipeline, CachedPipeline, FeatureUnion,
                               make_pipeline, make_union)
 from sklearn.svm import SVC
@@ -139,7 +139,6 @@ class DummyTransf(Transf):
         # Store a timestamp such that we know
         # that we have a cache object
         self.timestamp = time.time()
-        
         return self
 
 
