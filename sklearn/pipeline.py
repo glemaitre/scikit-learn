@@ -81,6 +81,7 @@ class _BasePipeline(six.with_metaclass(ABCMeta, BaseEstimator)):
             raise ValueError('Step names must not contain __: got '
                              '{0!r}'.format(invalid_names))
 
+
 class _Pipeline(six.with_metaclass(ABCMeta, _BasePipeline)):
     """Private abstract class for pipeline
     """
