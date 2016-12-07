@@ -887,7 +887,6 @@ def test_cached_pipeline():
                        cached_pipe.predict_log_proba(X))
     assert_array_equal(pipe.score(X, y), cached_pipe.score(X, y))
 
-
     # Create a new pipeline with cloned estimators
     # Check that we are reading the cache
     clf_2 = SVC(probability=True, random_state=0)
