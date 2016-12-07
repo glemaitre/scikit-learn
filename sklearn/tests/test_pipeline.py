@@ -3,6 +3,9 @@ Test the pipeline module.
 """
 import numpy as np
 from scipy import sparse
+from tempfile import mkdtemp
+import shutil
+import os
 
 from sklearn.externals.six.moves import zip
 from sklearn.utils.testing import assert_raises
@@ -15,8 +18,9 @@ from sklearn.utils.testing import assert_array_equal
 from sklearn.utils.testing import assert_array_almost_equal
 from sklearn.utils.testing import assert_dict_equal
 
-from sklearn.base import clone, BaseEstimator
-from sklearn.pipeline import Pipeline, FeatureUnion, make_pipeline, make_union
+from sklearn.base import clone, BaseEstimator, TransformerMixin
+from sklearn.pipeline import (Pipeline, CachedPipeline, FeatureUnion,
+                              make_pipeline, make_union)
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
 from sklearn.linear_model import LinearRegression
@@ -26,6 +30,7 @@ from sklearn.decomposition import PCA, TruncatedSVD
 from sklearn.datasets import load_iris
 from sklearn.preprocessing import StandardScaler
 from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.externals.joblib import Memory
 
 
 JUNK_FOOD_DOCS = (
@@ -123,6 +128,53 @@ class FitParamT(BaseEstimator):
         if sample_weight is not None:
             X = X * sample_weight
         return np.sum(X)
+
+
+class DummyTransf(Transf):
+    """Transformer which store the column means"""
+
+    def fit(self, X, y):
+        self.means_ = np.mean(X, axis=0)
+        return self
+
+
+###############################################################################
+# Test fixtures
+
+env = dict()
+
+
+def setup_module():
+    """ Test setup.
+    """
+    cachedir = mkdtemp()
+    env['dir'] = cachedir
+    if os.path.exists(cachedir):
+        shutil.rmtree(cachedir)
+    # Don't make the cachedir, Memory should be able to do that on the fly
+    print(80 * '_')
+    print('test_memory setup (%s)' % env['dir'])
+    print(80 * '_')
+
+
+def _rmtree_onerror(func, path, excinfo):
+    print('!' * 79)
+    print('os function failed: %r' % func)
+    print('file to be removed: %s' % path)
+    print('exception was: %r' % excinfo[1])
+    print('!' * 79)
+
+
+def teardown_module():
+    """ Test teardown.
+    """
+    shutil.rmtree(env['dir'], False, _rmtree_onerror)
+    print(80 * '_')
+    print('test_memory teardown (%s)' % env['dir'])
+    print(80 * '_')
+
+
+###############################################################################
 
 
 def test_pipeline_init():
@@ -799,3 +851,54 @@ def test_step_name_validation():
             assert_raise_message(ValueError, message, est.fit, [[1]], [1])
             assert_raise_message(ValueError, message, est.fit_transform,
                                  [[1]], [1])
+
+
+def test_cached_pipeline():
+    # Test the various methods of the pipeline (pca + svm).
+    iris = load_iris()
+    X = iris.data
+    y = iris.target
+    # Create a Memory object
+    memory = Memory(cachedir=env['dir'], verbose=10)
+    # Test with Transformer + SVC
+    clf = SVC(probability=True, random_state=0)
+    transf = DummyTransf()
+    pipe = Pipeline([('transf', clone(transf)), ('svc', (clf))])
+    cached_pipe = CachedPipeline([('transf', transf), ('svc', clf)],
+                                 memory=memory)
+
+    # Memoize the transformer at the first fit
+    cached_pipe.fit(X, y)
+    pipe.fit(X, y)
+    # Check if the results are similar
+    assert_array_equal(pipe.predict(X), cached_pipe.predict(X))
+    assert_array_equal(pipe.predict_proba(X), cached_pipe.predict_proba(X))
+    assert_array_equal(pipe.predict_log_proba(X),
+                       cached_pipe.predict_log_proba(X))
+    assert_array_equal(pipe.score(X, y), cached_pipe.score(X, y))
+
+    # Check that we are reading the cache while fitting
+    # a second time
+    cached_pipe.fit(X, y)
+    # Check if the results are similar
+    assert_array_equal(pipe.predict(X), cached_pipe.predict(X))
+    assert_array_equal(pipe.predict_proba(X), cached_pipe.predict_proba(X))
+    assert_array_equal(pipe.predict_log_proba(X),
+                       cached_pipe.predict_log_proba(X))
+    assert_array_equal(pipe.score(X, y), cached_pipe.score(X, y))
+
+
+    # Create a new pipeline with cloned estimators
+    # Check that we are reading the cache
+    clf_2 = SVC(probability=True, random_state=0)
+    transf_2 = DummyTransf()
+    cached_pipe_2 = CachedPipeline([('transf', transf_2), ('svc', clf_2)],
+                                   memory=memory)
+    cached_pipe_2.fit(X, y)
+
+    # Check if the results are similar
+    assert_array_equal(pipe.predict(X), cached_pipe_2.predict(X))
+    assert_array_equal(pipe.predict_proba(X), cached_pipe_2.predict_proba(X))
+    assert_array_equal(pipe.predict_log_proba(X),
+                       cached_pipe_2.predict_log_proba(X))
+    assert_array_equal(pipe.score(X, y), cached_pipe_2.score(X, y))
