@@ -100,6 +100,7 @@ ignored by setting them to ``None``::
     ...               clf=[SVC(), LogisticRegression()],
     ...               clf__C=[0.1, 10, 100])
     >>> grid_search = GridSearchCV(pipe, param_grid=params)
+    >>> estimators = []
 
 .. topic:: Examples:
 
@@ -124,6 +125,39 @@ i.e. if the last estimator is a classifier, the :class:`Pipeline` can be used
 as a classifier. If the last estimator is a transformer, again, so is the
 pipeline.
 
+.. _cached_pipeline:
+
+CachedPipeline: memoizing transformers
+======================================
+
+.. currentmodule:: sklearn.pipeline
+
+:class:`CachedPipeline` can be used instead of :class:`Pipeline` to avoid to fit
+transformers within a pipeline if the parameters and input data are identical.
+A typical example is the case of a grid search in which the transformers can be
+fitted only once and reuse for each configuration.
+
+Usage
+-----
+
+Similarly to :class:`Piepeline`, the pipeline is built on the same manner. However,
+an extra parameter ``memory`` is needed in order to cache the transformers.  ``memory``
+can be either a string containing the directory where to cache the transfomers or
+a ``joblib.Memory`` object::
+
+    >>> from sklearn.decomposition import PCA
+    >>> from sklearn.svm import SVC
+    >>> from sklearn.pipeline import CachedPipeline
+    >>> estimators = [('reduce_dim', PCA()), ('clf', SVC())]
+    >>> pipe = CachedPipeline(estimators)
+    >>> pipe # doctest: +NORMALIZE_WHITESPACE
+    CachedPipeline(memory=Memory(cachedir=None), steps=[('reduce_dim',
+        PCA(copy=True, iterated_power='auto', n_components=None,
+	random_state=None, svd_solver='auto', tol=0.0, whiten=False)),
+	('clf', SVC(C=1.0, cache_size=200, class_weight=None, coef0=0.0,
+	decision_function_shape=None, degree=3, gamma='auto', kernel='rbf',
+	max_iter=-1, probability=False, random_state=None, shrinking=True,
+	tol=0.001, verbose=False))])
 
 .. _feature_union:
 
