@@ -575,6 +575,34 @@ class CachedPipeline(Pipeline):
 
     Examples
     --------
+    >>> from sklearn.datasets import samples_generator
+    >>> from sklearn.decomposition import PCA
+    >>> from sklearn.ensemble import RandomForestClassifier
+    >>> from sklearn.externals.joblib import Memory
+    >>> from sklearn.model_selection import GridSearchCV
+    >>> from sklearn.pipeline import CachedPipeline
+    >>> from tempfile import mkdtemp
+    >>> # setup a temporary directory
+    >>> cachedir = mkdtemp()
+    >>> # setup the cache
+    >>> memory = Memory(cachedir=cachedir, verbose=0)
+    >>> # generate some data to play with
+    >>> X, y = samples_generator.make_classification(
+    ...     n_samples=100, n_informative=5, n_redundant=0, random_state=42)
+    >>> # Create a pipeline with a PCA and an RandomForestClassifier
+    >>> pca = PCA()
+    >>> clf = RandomForestClassifier()
+    >>> pipeline = CachedPipeline([('pca', pca), ('rf', clf)],
+    ...                           memory=memory)
+    >>> # Make a grid_search of the best parameters
+    >>> parameters = {'pca__n_components': (.25, .5),
+    ...               'rf__n_estimators': (10, 20)}
+    >>> # To avoid refitting the same PCA for different configuration
+    >>> # CachedPipeline will store the PCA estimator and load it
+    >>> # when required durin the grid search
+    >>> grid_search = GridSearchCV(pipeline, parameters, verbose=0)
+    >>> grid_search.fit(X, y)
+    GridSearchCV(...)
     """
 
     def __init__(self, steps, memory=Memory(cachedir=None, verbose=0)):
