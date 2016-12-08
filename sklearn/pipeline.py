@@ -543,7 +543,8 @@ class CachedPipeline(Pipeline):
     Intermediate steps of the pipeline must be 'transforms', that is, they
     must implement fit and transform methods.
     The final estimator only needs to implement fit.
-    The intermediate transformers are cached.
+    The intermediate transformers are cached. Memoizing is the transformers
+    is advantageous when fitting is time consuming.
 
     The purpose of the pipeline is to assemble several steps that can be
     cross-validated together while setting different parameters.
