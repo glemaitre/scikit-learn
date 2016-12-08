@@ -12,7 +12,7 @@ This example is just an illustration since for this specific case
 fitting PCA is not necessarly slower than loading the cache. Use
 ``CachedPipeline`` when the fitting of a transformer is costly.
 """
-# Author: 
+# Author: Guillaume Lemaitre
 
 from __future__ import print_function, division
 
