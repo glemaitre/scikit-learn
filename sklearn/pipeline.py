@@ -603,7 +603,7 @@ class CachedPipeline(Pipeline):
     >>> grid_search = GridSearchCV(pipeline, parameters, verbose=0)
     >>> grid_search.fit(X, y)
     ...                                              # doctest: +ELLIPSIS
-    GridSearchCV([...])
+    GridSearchCV(...)
     """
 
     def __init__(self, steps, memory=Memory(cachedir=None, verbose=0)):
