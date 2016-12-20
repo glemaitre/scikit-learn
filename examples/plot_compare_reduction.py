@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-======================================================================
-Selecting dimensionality reduction with Pipeline, CachedPipeline, and\
+=======================================================================
+Selecting dimensionality reduction with Pipeline, CachedPipeline, and \
 GridSearchCV
-======================================================================
+=======================================================================
 
 This example constructs a pipeline that does dimensionality
 reduction followed by prediction with a support vector
@@ -21,13 +21,14 @@ again the same transformers over and over.
 Note that the use of ``CachedPipeline`` becomes interesting when the
 fitting of a transformer is costly.
 """
-# Authors: Robert McGibbon, Joel Nothman
 
 ###############################################################################
 # Illustration of ``Pipeline`` and ``GridSearchCV``
 ###############################################################################
 # This section illustrates the use of a ``Pipeline`` with
 # ``GridSearchCV``
+
+# Authors: Robert McGibbon, Joel Nothman
 
 from __future__ import print_function, division
 
@@ -41,6 +42,8 @@ from sklearn.svm import LinearSVC
 from sklearn.decomposition import PCA, NMF
 from sklearn.feature_selection import SelectKBest, chi2
 from sklearn.externals.joblib import Memory
+
+print(__doc__)
 
 pipe = Pipeline([
     ('reduce_dim', PCA()),
