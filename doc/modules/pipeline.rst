@@ -140,7 +140,7 @@ fitted only once and reuse for each configuration.
 Usage
 -----
 
-Similarly to :class:`Piepeline`, the pipeline is built on the same manner. However,
+Similarly to :class:`Pipeline`, the pipeline is built on the same manner. However,
 an extra parameter ``memory`` is needed in order to cache the transformers.  ``memory``
 can be either a string containing the directory where to cache the transfomers or
 a ``joblib.Memory`` object::

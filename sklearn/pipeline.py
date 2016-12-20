@@ -554,7 +554,7 @@ class CachedPipeline(Pipeline):
     with its name to another estimator, or a transformer removed by setting
     to None.
 
-    Read more in the :ref:`User Guide <pipeline>`.
+    Read more in the :ref:`User Guide <cached_pipeline>`.
 
     Parameters
     ----------
