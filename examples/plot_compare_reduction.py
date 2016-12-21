@@ -66,7 +66,7 @@ param_grid = [
 ]
 reducer_labels = ['PCA', 'NMF', 'KBest(chi2)']
 
-grid = GridSearchCV(pipe, cv=3, n_jobs=2, param_grid=param_grid)
+grid = GridSearchCV(pipe, cv=3, n_jobs=1, param_grid=param_grid)
 digits = load_digits()
 grid.fit(digits.data, digits.target)
 

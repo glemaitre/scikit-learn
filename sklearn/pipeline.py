@@ -518,6 +518,11 @@ class Pipeline(_Pipeline):
     array([False, False,  True,  True, False, False, True,  True, False,
            True,  False,  True,  True, False, True,  False, True, True,
            False, False], dtype=bool)
+
+    See also
+    --------
+    CachedPipeline
+        A cached version of the Pipeline.
     """
 
     # BaseEstimator interface
@@ -605,6 +610,12 @@ class CachedPipeline(Pipeline):
     >>> grid_search.fit(X, y)
     ...                                              # doctest: +ELLIPSIS
     GridSearchCV(...)
+
+    See also
+    --------
+    Pipeline
+        Pipeline of transforms with a final estimator.
+
     """
 
     def __init__(self, steps, memory=Memory(cachedir=None, verbose=0)):
