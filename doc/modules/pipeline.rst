@@ -127,23 +127,23 @@ pipeline.
 
 .. _cached_pipeline:
 
-CachedPipeline: memoizing transformers
-======================================
+CachedPipeline: avoid to repeat computation
+===========================================
 
 .. currentmodule:: sklearn.pipeline
 
-:class:`CachedPipeline` can be used instead of :class:`Pipeline` to avoid to fit
-transformers within a pipeline if the parameters and input data are identical.
-A typical example is the case of a grid search in which the transformers can be
-fitted only once and reuse for each configuration.
+:class:`CachedPipeline` can be used instead of :class:`Pipeline` to avoid to
+compute the fit transformers within a pipeline if the parameters and input data
+are identical. A typical example is the case of a grid search in which the
+transformers can be fitted only once and reuse for each configuration.
 
 Usage
 -----
 
 Similarly to :class:`Pipeline`, the pipeline is built on the same manner. However,
-an extra parameter ``memory`` is needed in order to cache the transformers.  ``memory``
-can be either a string containing the directory where to cache the transfomers or
-a ``joblib.Memory`` object::
+an extra parameter ``memory`` is needed in order to cache the transformers.
+``memory`` can be either a string containing the directory where to cache the
+transfomers or a ``joblib.Memory`` object::
 
     >>> from sklearn.decomposition import PCA
     >>> from sklearn.svm import SVC
