@@ -119,7 +119,7 @@ digits = load_digits()
 grid.fit(digits.data, digits.target)
 
 ###############################################################################
-# The``PCA`` fitting is only computed at the evaluation of the first
+# The ``PCA`` fitting is only computed at the evaluation of the first
 # configuration of the ``C`` parameter of the ``LinearSVC`` classifier. The
 # other configurations of ``C`` will trigger the loading of the cached ``PCA``
 # estimator data, leading to save processing time. Therefore, the use of
