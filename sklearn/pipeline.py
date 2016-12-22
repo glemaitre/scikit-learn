@@ -524,6 +524,7 @@ class Pipeline(_BasePipeline):
         # check if first estimator expects pairwise input
         return getattr(self.steps[0][1], '_pairwise', False)
 
+
 class CachedPipeline(Pipeline):
     """A cached version of the Pipeline.
 
