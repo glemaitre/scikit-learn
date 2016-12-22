@@ -27,7 +27,7 @@ fitting of a transformer is costly.
 # This section illustrates the use of a ``Pipeline`` with
 # ``GridSearchCV``
 
-# Authors: Robert McGibbon, Joel Nothman
+# Authors: Robert McGibbon, Joel Nothman, Guillaume Lemaitre
 
 from __future__ import print_function, division
 
@@ -117,3 +117,10 @@ cached_pipe = CachedPipeline([('reduce_dim', PCA()),
 grid = GridSearchCV(cached_pipe, cv=3, n_jobs=1, param_grid=param_grid)
 digits = load_digits()
 grid.fit(digits.data, digits.target)
+
+###############################################################################
+# The``PCA`` fitting is only computed at the evaluation of the first
+# configuration of the ``C`` parameter of the ``LinearSVC`` classifier. The
+# other configurations of ``C`` will trigger the loading of the cached ``PCA``
+# estimator data, leading to save processing time. Therefore, the use of
+# ``CachedPipeline`` is highly beneficial when fitting a transformer is costly.
