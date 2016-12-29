@@ -43,6 +43,9 @@ cdef DTYPE_t FEATURE_THRESHOLD = 1e-7
 # in SparseSplitter
 cdef DTYPE_t EXTRACT_NNZ_SWITCH = 0.1
 
+# Constant to switch on/off using the presorting
+cdef DTYPE_t RATIO_ENABLE_PRESORTING = 0.1
+
 cdef inline void _init_split(SplitRecord* self, SIZE_t start_pos) nogil:
     self.impurity_left = INFINITY
     self.impurity_right = INFINITY
@@ -349,7 +352,7 @@ cdef class BestSplitter(BaseDenseSplitter):
         # Enable local re-sorting when the range of active samples is a very
         # small fraction of the total dataset: in this case, scanning the
         # per-feature pre-sorted indices is more expensive than resorting.
-        if (end - start) < 0.1 * self.n_total_samples:
+        if (end - start) < RATIO_ENABLE_PRESORTING * self.n_total_samples:
             presort = 0
 
         if presort:
