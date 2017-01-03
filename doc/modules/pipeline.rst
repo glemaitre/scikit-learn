@@ -39,13 +39,9 @@ is an estimator object::
     >>> from sklearn.decomposition import PCA
     >>> estimators = [('reduce_dim', PCA()), ('clf', SVC())]
     >>> pipe = Pipeline(estimators)
-    >>> pipe # doctest: +NORMALIZE_WHITESPACE
-    Pipeline(steps=[('reduce_dim', PCA(copy=True, iterated_power='auto',
-        n_components=None, random_state=None, svd_solver='auto', tol=0.0,
-        whiten=False)), ('clf', SVC(C=1.0, cache_size=200, class_weight=None,
-        coef0=0.0, decision_function_shape='ovr', degree=3, gamma='auto',
-        kernel='rbf', max_iter=-1, probability=False, random_state=None,
-        shrinking=True, tol=0.001, verbose=False))])
+    >>> pipe # doctest: +NORMALIZE_WHITESPACE, +ELLIPSIS
+    Pipeline(steps=[('reduce_dim', PCA(copy=True,...)),
+                    ('clf', SVC(C=1.0,...))])
 
 The utility function :func:`make_pipeline` is a shorthand
 for constructing pipelines;
@@ -76,14 +72,9 @@ and as a ``dict`` in ``named_steps``::
 Parameters of the estimators in the pipeline can be accessed using the
 ``<estimator>__<parameter>`` syntax::
 
-    >>> pipe.set_params(clf__C=10) # doctest: +NORMALIZE_WHITESPACE
-    Pipeline(steps=[('reduce_dim', PCA(copy=True, iterated_power='auto',
-        n_components=None, random_state=None, svd_solver='auto', tol=0.0,
-        whiten=False)), ('clf', SVC(C=10, cache_size=200, class_weight=None,
-        coef0=0.0, decision_function_shape='ovr', degree=3, gamma='auto',
-        kernel='rbf', max_iter=-1, probability=False, random_state=None,
-        shrinking=True, tol=0.001, verbose=False))])
-
+    >>> pipe.set_params(clf__C=10) # doctest: +NORMALIZE_WHITESPACE, +ELLIPSIS
+    Pipeline(steps=[('reduce_dim', PCA(copy=True, iterated_power='auto',...)),
+                    ('clf', SVC(C=10, cache_size=200, class_weight=None,...))])
 
 This is particularly important for doing grid searches::
 
@@ -151,15 +142,10 @@ transfomers or a ``joblib.Memory`` object::
     >>> from sklearn.pipeline import CachedPipeline
     >>> estimators = [('reduce_dim', PCA()), ('clf', SVC())]
     >>> pipe = CachedPipeline(estimators)
-    >>> pipe # doctest: +NORMALIZE_WHITESPACE
+    >>> pipe # doctest: +NORMALIZE_WHITESPACE, +ELLIPSIS
     CachedPipeline(memory=Memory(cachedir=None),
-        steps=[('reduce_dim', PCA(copy=True, iterated_power='auto',
-        n_components=None, random_state=None,
-        svd_solver='auto', tol=0.0, whiten=False)), ('clf', SVC(C=1.0,
-        cache_size=200, class_weight=None, coef0=0.0,
-        decision_function_shape='ovr', degree=3, gamma='auto', kernel='rbf',
-        max_iter=-1, probability=False, random_state=None, shrinking=True,
-        tol=0.001, verbose=False))])
+                   steps=[('reduce_dim', PCA(copy=True,...)),
+                          ('clf', SVC(C=1.0,...))])
 
 .. topic:: Examples:
 
@@ -204,15 +190,11 @@ and ``value`` is an estimator object::
     >>> from sklearn.decomposition import KernelPCA
     >>> estimators = [('linear_pca', PCA()), ('kernel_pca', KernelPCA())]
     >>> combined = FeatureUnion(estimators)
-    >>> combined # doctest: +NORMALIZE_WHITESPACE
-    FeatureUnion(n_jobs=1, transformer_list=[('linear_pca', PCA(copy=True,
-        iterated_power='auto', n_components=None, random_state=None,
-        svd_solver='auto', tol=0.0, whiten=False)), ('kernel_pca',
-        KernelPCA(alpha=1.0, coef0=1, copy_X=True, degree=3,
-        eigen_solver='auto', fit_inverse_transform=False, gamma=None,
-        kernel='linear', kernel_params=None, max_iter=None, n_components=None,
-        n_jobs=1, random_state=None, remove_zero_eig=False, tol=0))],
-        transformer_weights=None)
+    >>> combined # doctest: +NORMALIZE_WHITESPACE, +ELLIPSIS
+    FeatureUnion(n_jobs=1,
+                 transformer_list=[('linear_pca', PCA(copy=True,...)),
+                                   ('kernel_pca', KernelPCA(alpha=1.0,...))],
+                 transformer_weights=None)
 
 
 Like pipelines, feature unions have a shorthand constructor called
@@ -222,11 +204,12 @@ Like pipelines, feature unions have a shorthand constructor called
 Like ``Pipeline``, individual steps may be replaced using ``set_params``,
 and ignored by setting to ``None``::
 
-    >>> combined.set_params(kernel_pca=None) # doctest: +NORMALIZE_WHITESPACE
-    FeatureUnion(n_jobs=1, transformer_list=[('linear_pca', PCA(copy=True,
-          iterated_power='auto', n_components=None, random_state=None,
-          svd_solver='auto', tol=0.0, whiten=False)), ('kernel_pca', None)],
-        transformer_weights=None)
+    >>> combined.set_params(kernel_pca=None)
+    ... # doctest: +NORMALIZE_WHITESPACE, +ELLIPSIS
+    FeatureUnion(n_jobs=1,
+                 transformer_list=[('linear_pca', PCA(copy=True,...)),
+                                   ('kernel_pca', None)],
+                 transformer_weights=None)
 
 .. topic:: Examples:
 
