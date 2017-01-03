@@ -225,6 +225,10 @@ class Pipeline(_BasePipeline):
 
     def _fit_single_transform(self, transformer, name, idx_transform, X, y,
                               **fit_params_trans):
+        """Private function useful for subclassing (cf. CachedPipeline).
+
+        Help to easily decorate _fit_transform_one().
+        """
         Xt, transform = _fit_transform_one(transformer, name, None, X, y,
                                            **fit_params_trans)
         return Xt, transform

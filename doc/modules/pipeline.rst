@@ -41,11 +41,11 @@ is an estimator object::
     >>> pipe = Pipeline(estimators)
     >>> pipe # doctest: +NORMALIZE_WHITESPACE
     Pipeline(steps=[('reduce_dim', PCA(copy=True, iterated_power='auto',
-    n_components=None, random_state=None, svd_solver='auto', tol=0.0,
-    whiten=False)), ('clf', SVC(C=1.0, cache_size=200, class_weight=None,
-    coef0=0.0, decision_function_shape='ovr', degree=3, gamma='auto',
-    kernel='rbf', max_iter=-1, probability=False, random_state=None,
-    shrinking=True, tol=0.001, verbose=False))])
+        n_components=None, random_state=None, svd_solver='auto', tol=0.0,
+        whiten=False)), ('clf', SVC(C=1.0, cache_size=200, class_weight=None,
+        coef0=0.0, decision_function_shape='ovr', degree=3, gamma='auto',
+        kernel='rbf', max_iter=-1, probability=False, random_state=None,
+        shrinking=True, tol=0.001, verbose=False))])
 
 The utility function :func:`make_pipeline` is a shorthand
 for constructing pipelines;
@@ -109,6 +109,7 @@ ignored by setting them to ``None``::
  * :ref:`sphx_glr_auto_examples_plot_digits_pipe.py`
  * :ref:`sphx_glr_auto_examples_plot_kernel_approximation.py`
  * :ref:`sphx_glr_auto_examples_svm_plot_svm_anova.py`
+ * :ref:`sphx-glr-auto-examples-plot-compare-reduction-py`
 
 .. topic:: See also:
 
@@ -152,13 +153,17 @@ transfomers or a ``joblib.Memory`` object::
     >>> pipe = CachedPipeline(estimators)
     >>> pipe # doctest: +NORMALIZE_WHITESPACE
     CachedPipeline(memory=Memory(cachedir=None),
-    steps=[('reduce_dim', PCA(copy=True, iterated_power='auto',
-    n_components=None, random_state=None,
-    svd_solver='auto', tol=0.0, whiten=False)), ('clf', SVC(C=1.0,
-    cache_size=200, class_weight=None, coef0=0.0,
-    decision_function_shape='ovr', degree=3, gamma='auto', kernel='rbf',
-    max_iter=-1, probability=False, random_state=None, shrinking=True,
-    tol=0.001, verbose=False))])
+        steps=[('reduce_dim', PCA(copy=True, iterated_power='auto',
+        n_components=None, random_state=None,
+        svd_solver='auto', tol=0.0, whiten=False)), ('clf', SVC(C=1.0,
+        cache_size=200, class_weight=None, coef0=0.0,
+        decision_function_shape='ovr', degree=3, gamma='auto', kernel='rbf',
+        max_iter=-1, probability=False, random_state=None, shrinking=True,
+        tol=0.001, verbose=False))])
+
+.. topic:: Examples:
+
+ * :ref:`sphx-glr-auto-examples-plot-compare-reduction-py`
 
 .. _feature_union:
 

@@ -86,7 +86,6 @@ plt.xticks(bar_offsets + len(reducer_labels) / 2, N_FEATURES_OPTIONS)
 plt.ylabel('Digit classification accuracy')
 plt.ylim((0, 1))
 plt.legend(loc='upper left')
-plt.show()
 
 ###############################################################################
 # Illustration of ``CachedPipeline`` instead of ``Pipeline``
@@ -124,3 +123,5 @@ grid.fit(digits.data, digits.target)
 # other configurations of ``C`` will trigger the loading of the cached ``PCA``
 # estimator data, leading to save processing time. Therefore, the use of
 # ``CachedPipeline`` is highly beneficial when fitting a transformer is costly.
+
+plt.show()
