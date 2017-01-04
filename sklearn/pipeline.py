@@ -616,7 +616,7 @@ class CachedPipeline(Pipeline):
                               **fit_params_trans):
         memory = self.memory
         if memory is None:
-            memory = Memory(cachedir=os.cwd, verbose=0)
+            memory = Memory(cachedir=os.getcwd(), verbose=0)
         elif isinstance(memory, six.string_types):
             memory = Memory(cachedir=memory, verbose=0)
         elif not isinstance(memory, Memory):
