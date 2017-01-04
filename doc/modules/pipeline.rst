@@ -143,7 +143,7 @@ transfomers or a ``joblib.Memory`` object::
     >>> estimators = [('reduce_dim', PCA()), ('clf', SVC())]
     >>> pipe = CachedPipeline(estimators)
     >>> pipe # doctest: +NORMALIZE_WHITESPACE, +ELLIPSIS
-    CachedPipeline(memory=Memory(cachedir=None),
+    CachedPipeline(memory=None,
                    steps=[('reduce_dim', PCA(copy=True,...)),
                           ('clf', SVC(C=1.0,...))])
 
