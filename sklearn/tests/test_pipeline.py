@@ -840,8 +840,8 @@ def test_cached_pipeline_default():
     y = iris.target
     # Try to run the CachedPipeline with the default parameter
     cached_pipe = CachedPipeline([('transf', DummyTransf()),
-                                      ('svc', SVC())],
-                                     memory=None)
+                                  ('svc', SVC())],
+                                 memory=None)
     cached_pipe.fit(X, y)
     shutil.rmtree(os.path.join(os.getcwd(), 'joblib'))
 
