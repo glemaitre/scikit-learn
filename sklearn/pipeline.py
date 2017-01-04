@@ -9,6 +9,8 @@ estimator, as a chain of transforms and estimators.
 #         Lars Buitinck
 # License: BSD
 
+import os
+
 from collections import defaultdict
 from abc import ABCMeta, abstractmethod
 
@@ -556,10 +558,10 @@ class CachedPipeline(Pipeline):
         chained, in the order in which they are chained, with the last object
         an estimator.
 
-    memory : Instance of joblib.Memory or string (optional)
+    memory : Instance of joblib.Memory or string, optional (default=None)
         Used to cache the output of the computation of the tree.
-        By default, no caching is done. If a string is given, it is the
-        path to the caching directory.
+        By default, the current directory is used to cache the estimators.
+        If a string is given, it is the path to the caching directory.
 
     Attributes
     ----------
@@ -606,15 +608,21 @@ class CachedPipeline(Pipeline):
 
     """
 
-    def __init__(self, steps, memory=Memory(cachedir=None, verbose=0)):
+    def __init__(self, steps, memory=None):
         self.memory = memory
         super(CachedPipeline, self).__init__(steps)
 
     def _fit_single_transform(self, transformer, name, idx_transform, X, y,
                               **fit_params_trans):
         memory = self.memory
-        if isinstance(memory, six.string_types):
+        if memory is None:
+            memory = Memory(cachedir=os.cwd, verbose=0)
+        elif isinstance(memory, six.string_types):
             memory = Memory(cachedir=memory, verbose=0)
+        elif not isinstance(memory, Memory):
+            raise ValueError('memory is either `str` or a `joblib.Memory`'
+                             ' instance')
+
         # Clone the transformer to maximize cache hits
         clone_transformer = clone(transformer)
         Xt, transform = memory.cache(_fit_transform_one)(

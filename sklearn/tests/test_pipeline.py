@@ -819,6 +819,19 @@ def test_step_name_validation():
                                  [[1]], [1])
 
 
+def test_cached_pipeline_wrong_memory():
+    # Test that an error is raised when memory is not a string or a Memory
+    # instance
+    iris = load_iris()
+    X = iris.data
+    y = iris.target
+    # Define memory as an integer
+    memory = 1
+    cached_pipe = CachedPipeline([('transf', DummyTransf()), ('svc', SVC())],
+                                 memory=memory)
+    assert_raises(ValueError, cached_pipe.fit, X, y)
+
+
 def test_cached_pipeline():
     # Test the various methods of the pipeline (pca + svm).
     iris = load_iris()
