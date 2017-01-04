@@ -5,6 +5,7 @@ Test the pipeline module.
 from tempfile import mkdtemp
 import shutil
 import time
+import os
 
 import numpy as np
 from scipy import sparse
@@ -832,6 +833,19 @@ def test_cached_pipeline_wrong_memory():
     assert_raises(ValueError, cached_pipe.fit, X, y)
 
 
+def test_cached_pipeline_default():
+    # Test with default parameters
+    iris = load_iris()
+    X = iris.data
+    y = iris.target
+    # Try to run the CachedPipeline with the default parameter
+    cached_pipe = CachedPipeline([('transf', DummyTransf()),
+                                      ('svc', SVC())],
+                                     memory=None)
+    cached_pipe.fit(X, y)
+    shutil.rmtree(os.path.join(os.getcwd(), 'joblib'))
+
+
 def test_cached_pipeline():
     # Test the various methods of the pipeline (pca + svm).
     iris = load_iris()
@@ -839,6 +853,7 @@ def test_cached_pipeline():
     y = iris.target
     # Create a Memory object
     try:
+        # Instead create a temporary folder
         cachedir = mkdtemp()
         memory = Memory(cachedir=cachedir, verbose=10)
         # Test with Transformer + SVC
