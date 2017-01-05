@@ -88,12 +88,11 @@ plt.ylim((0, 1))
 plt.legend(loc='upper left')
 
 ###############################################################################
-# Illustration of ``CachedPipeline`` instead of ``Pipeline``
+# Caching transformers within a ``Pipeline``
 ###############################################################################
 # It is sometimes interesting to store the state of a specific transformer
 # since it could be used again. Using a pipeline in ``GridSearchCV`` triggers
-# such situations. Therefore, we replace ``Pipeline`` with ``CachedPipeline``
-# to memoize the transfomers within the pipeline.
+# such situations. Therefore, we use the argument ``memory`` to enable caching
 #
 # .. warning::
 #     Note that this example is, however, only an illustration since for this
@@ -102,15 +101,14 @@ plt.legend(loc='upper left')
 #     is costly.
 
 from tempfile import mkdtemp
-from sklearn.pipeline import CachedPipeline
 from sklearn.externals.joblib import Memory
 
 # Create a temporary folder to store the transformers of the pipeline
 cachedir = mkdtemp()
 memory = Memory(cachedir=cachedir, verbose=10)
-cached_pipe = CachedPipeline([('reduce_dim', PCA()),
-                              ('classify', LinearSVC())],
-                             memory=memory)
+cached_pipe = Pipeline([('reduce_dim', PCA()),
+                        ('classify', LinearSVC())],
+                       memory=memory)
 
 # This time, a cached pipeline will be used within the grid search
 grid = GridSearchCV(cached_pipe, cv=3, n_jobs=1, param_grid=param_grid)

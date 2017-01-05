@@ -22,7 +22,7 @@ from sklearn.utils.testing import assert_array_almost_equal
 from sklearn.utils.testing import assert_dict_equal
 
 from sklearn.base import clone, BaseEstimator
-from sklearn.pipeline import (Pipeline, CachedPipeline, FeatureUnion,
+from sklearn.pipeline import (Pipeline, FeatureUnion,
                               make_pipeline, make_union)
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
@@ -539,6 +539,7 @@ def test_set_pipeline_step_none():
                        'm2': mult2,
                        'm3': None,
                        'last': mult5,
+                       'memory': None,
                        'm2__mult': 2,
                        'last__mult': 5,
                        })
@@ -820,7 +821,7 @@ def test_step_name_validation():
                                  [[1]], [1])
 
 
-def test_cached_pipeline_wrong_memory():
+def test_pipeline_wrong_memory():
     # Test that an error is raised when memory is not a string or a Memory
     # instance
     iris = load_iris()
@@ -828,22 +829,9 @@ def test_cached_pipeline_wrong_memory():
     y = iris.target
     # Define memory as an integer
     memory = 1
-    cached_pipe = CachedPipeline([('transf', DummyTransf()), ('svc', SVC())],
-                                 memory=memory)
+    cached_pipe = Pipeline([('transf', DummyTransf()), ('svc', SVC())],
+                           memory=memory)
     assert_raises(ValueError, cached_pipe.fit, X, y)
-
-
-def test_cached_pipeline_default():
-    # Test with default parameters
-    iris = load_iris()
-    X = iris.data
-    y = iris.target
-    # Try to run the CachedPipeline with the default parameter
-    cached_pipe = CachedPipeline([('transf', DummyTransf()),
-                                  ('svc', SVC())],
-                                 memory=None)
-    cached_pipe.fit(X, y)
-    shutil.rmtree(os.path.join(os.getcwd(), 'joblib'))
 
 
 def test_cached_pipeline():
@@ -860,8 +848,8 @@ def test_cached_pipeline():
         clf = SVC(probability=True, random_state=0)
         transf = DummyTransf()
         pipe = Pipeline([('transf', clone(transf)), ('svc', (clf))])
-        cached_pipe = CachedPipeline([('transf', transf), ('svc', clf)],
-                                     memory=memory)
+        cached_pipe = Pipeline([('transf', transf), ('svc', clf)],
+                               memory=memory)
 
         # Memoize the transformer at the first fit
         cached_pipe.fit(X, y)
@@ -894,8 +882,8 @@ def test_cached_pipeline():
         # Check that we are reading the cache
         clf_2 = SVC(probability=True, random_state=0)
         transf_2 = DummyTransf()
-        cached_pipe_2 = CachedPipeline([('transf', transf_2), ('svc', clf_2)],
-                                       memory=memory)
+        cached_pipe_2 = Pipeline([('transf', transf_2), ('svc', clf_2)],
+                                 memory=memory)
         cached_pipe_2.fit(X, y)
 
         # Check if the results are similar

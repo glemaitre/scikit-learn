@@ -470,7 +470,7 @@ META_ESTIMATORS = ["OneVsOneClassifier", "MultiOutputEstimator",
                    "OutputCodeClassifier", "OneVsRestClassifier",
                    "RFE", "RFECV", "BaseEnsemble"]
 # estimators that there is no way to default-construct sensibly
-OTHER = ["Pipeline", "CachedPipeline", "FeatureUnion", "GridSearchCV",
+OTHER = ["Pipeline", "FeatureUnion", "GridSearchCV",
          "RandomizedSearchCV", "SelectFromModel"]
 
 # some trange ones
@@ -512,7 +512,7 @@ def all_estimators(include_meta_estimators=False,
     include_other : boolean, default=False
         Wether to include meta-estimators that are somehow special and can
         not be default-constructed sensibly. These are currently
-        Pipeline, CachedPipeline, FeatureUnion and GridSearchCV
+        Pipeline, FeatureUnion and GridSearchCV
 
     include_dont_test : boolean, default=False
         Whether to include "special" label estimator or test processors.

@@ -46,12 +46,12 @@ New features
      particularly useful for targets with an exponential trend.
      :issue:`7655` by :user:`Karan Desai <karandesai-96>`.
 
-   - Added the :class:`pipeline.CachedPipeline` class to cache
-     the fit data of transformers present in a pipeline.
-     By :user:`Guillaume Lemaitre <glemaitre>`.
-
 Enhancements
 ............
+
+   - :class:`pipeline.Pipeline` allow to cache transformers
+     within a pipeline.
+     By :issue:`7990` by :user:`Guillaume Lemaitre <glemaitre>`.
 
    - :class:`decomposition.PCA`, :class:`decomposition.IncrementalPCA` and
      :class:`decomposition.TruncatedSVD` now expose the singular values

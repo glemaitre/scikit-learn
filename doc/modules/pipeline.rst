@@ -40,7 +40,8 @@ is an estimator object::
     >>> estimators = [('reduce_dim', PCA()), ('clf', SVC())]
     >>> pipe = Pipeline(estimators)
     >>> pipe # doctest: +NORMALIZE_WHITESPACE, +ELLIPSIS
-    Pipeline(steps=[('reduce_dim', PCA(copy=True,...)),
+    Pipeline(memory=None,
+             steps=[('reduce_dim', PCA(copy=True,...)),
                     ('clf', SVC(C=1.0,...))])
 
 The utility function :func:`make_pipeline` is a shorthand
@@ -52,7 +53,8 @@ filling in the names automatically::
     >>> from sklearn.naive_bayes import MultinomialNB
     >>> from sklearn.preprocessing import Binarizer
     >>> make_pipeline(Binarizer(), MultinomialNB()) # doctest: +NORMALIZE_WHITESPACE
-    Pipeline(steps=[('binarizer', Binarizer(copy=True, threshold=0.0)),
+    Pipeline(memory=None,
+             steps=[('binarizer', Binarizer(copy=True, threshold=0.0)),
                     ('multinomialnb', MultinomialNB(alpha=1.0,
                                                     class_prior=None,
                                                     fit_prior=True))])
@@ -73,7 +75,8 @@ Parameters of the estimators in the pipeline can be accessed using the
 ``<estimator>__<parameter>`` syntax::
 
     >>> pipe.set_params(clf__C=10) # doctest: +NORMALIZE_WHITESPACE, +ELLIPSIS
-    Pipeline(steps=[('reduce_dim', PCA(copy=True, iterated_power='auto',...)),
+    Pipeline(memory=None,
+             steps=[('reduce_dim', PCA(copy=True, iterated_power='auto',...)),
                     ('clf', SVC(C=10, cache_size=200, class_weight=None,...))])
 
 This is particularly important for doing grid searches::
@@ -117,35 +120,32 @@ i.e. if the last estimator is a classifier, the :class:`Pipeline` can be used
 as a classifier. If the last estimator is a transformer, again, so is the
 pipeline.
 
-.. _cached_pipeline:
-
-CachedPipeline: avoid to repeat computation
-===========================================
+Caching transformers: avoid to repeat computation
+-------------------------------------------------
 
 .. currentmodule:: sklearn.pipeline
 
-:class:`CachedPipeline` can be used instead of :class:`Pipeline` to avoid to
-compute the fit transformers within a pipeline if the parameters and input data
-are identical. A typical example is the case of a grid search in which the
-transformers can be fitted only once and reuse for each configuration.
+Fitting transformers may sometimes computational expensive. The
+:class:`Pipeline` allows to cache the transformer after calling `fit`.
+This feature is used to avoid to compute the fit transformers within a pipeline
+if the parameters and input data are identical. A typical example is the case of
+a grid search in which the transformers can be fitted only once and reuse for
+each configuration.
 
-Usage
------
-
-Similarly to :class:`Pipeline`, the pipeline is built on the same manner. However,
-an extra parameter ``memory`` is needed in order to cache the transformers.
+The parameter ``memory`` is needed in order to cache the transformers.
 ``memory`` can be either a string containing the directory where to cache the
 transfomers or a ``joblib.Memory`` object::
 
+    >>> from tempfile import mkdtemp
     >>> from sklearn.decomposition import PCA
     >>> from sklearn.svm import SVC
-    >>> from sklearn.pipeline import CachedPipeline
+    >>> from sklearn.pipeline import Pipeline
     >>> estimators = [('reduce_dim', PCA()), ('clf', SVC())]
-    >>> pipe = CachedPipeline(estimators)
+    >>> pipe = Pipeline(estimators, memory=mkdtemp())
     >>> pipe # doctest: +NORMALIZE_WHITESPACE, +ELLIPSIS
-    CachedPipeline(memory=None,
-                   steps=[('reduce_dim', PCA(copy=True,...)),
-                          ('clf', SVC(C=1.0,...))])
+    Pipeline(...,
+             steps=[('reduce_dim', PCA(copy=True,...)),
+                    ('clf', SVC(C=1.0,...))])
 
 .. topic:: Examples:
 

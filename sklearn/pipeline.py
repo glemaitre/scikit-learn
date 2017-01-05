@@ -9,8 +9,6 @@ estimator, as a chain of transforms and estimators.
 #         Lars Buitinck
 # License: BSD
 
-import os
-
 from collections import defaultdict
 from abc import ABCMeta, abstractmethod
 
@@ -23,7 +21,7 @@ from .externals import six
 from .utils import tosequence
 from .utils.metaestimators import if_delegate_has_method
 
-__all__ = ['Pipeline', 'CachedPipeline', 'FeatureUnion']
+__all__ = ['Pipeline', 'FeatureUnion']
 
 
 class _BasePipeline(six.with_metaclass(ABCMeta, BaseEstimator)):
@@ -92,6 +90,9 @@ class Pipeline(_BasePipeline):
     must implement fit and transform methods.
     The final estimator only needs to implement fit.
 
+    The transformers in the pipeline can be cached using `memory` argument.
+    Caching the transformers is advantageous when fitting is time consuming.
+
     The purpose of the pipeline is to assemble several steps that can be
     cross-validated together while setting different parameters.
     For this, it enables setting parameters of the various steps using their
@@ -108,6 +109,14 @@ class Pipeline(_BasePipeline):
         List of (name, transform) tuples (implementing fit/transform) that are
         chained, in the order in which they are chained, with the last object
         an estimator.
+
+    memory : Instance of joblib.Memory or string, optional (default=None)
+        Used to cache the output of the computation of the tree.
+        By default, no cache is performed.
+        If a string is given, it is the path to the caching directory.
+        Enabling caching trigger a clone of the transformers before fitting.
+        Therefore, the effect of past calls to `fit` is nullified and
+        the setting `warm_start=True` is ignored.
 
     Attributes
     ----------
@@ -145,18 +154,15 @@ class Pipeline(_BasePipeline):
            True,  False,  True,  True, False, True,  False, True, True,
            False, False], dtype=bool)
 
-    See also
-    --------
-    CachedPipeline
-        A cached version of the Pipeline.
     """
 
     # BaseEstimator interface
 
-    def __init__(self, steps):
+    def __init__(self, steps, memory=None):
         # shallow copy of steps
         self.steps = tosequence(steps)
         self._validate_steps()
+        self.memory = memory
 
     def get_params(self, deep=True):
         """Get parameters for this estimator.
@@ -225,18 +231,21 @@ class Pipeline(_BasePipeline):
 
     # Estimator interface
 
-    def _fit_single_transform(self, transformer, name, idx_transform, X, y,
-                              **fit_params_trans):
-        """Private function useful for subclassing (cf. CachedPipeline).
-
-        Help to easily decorate _fit_transform_one().
-        """
-        Xt, transform = _fit_transform_one(transformer, name, None, X, y,
-                                           **fit_params_trans)
-        return Xt, transform
-
     def _fit(self, X, y=None, **fit_params):
         self._validate_steps()
+        # Setup the memory
+        memory = self.memory
+        if memory is None:
+            memory = Memory(cachedir=None, verbose=0)
+        elif isinstance(memory, six.string_types):
+            memory = Memory(cachedir=memory, verbose=0)
+        elif not isinstance(memory, Memory):
+            raise ValueError('memory is either `str` or a `joblib.Memory`'
+                             ' instance')
+        # Decorate _fit_transform_one to be able to use it
+        # with cache
+        fit_transform_one = memory.cache(_fit_transform_one)
+
         fit_params_steps = dict((name, {}) for name, step in self.steps
                                 if step is not None)
         for pname, pval in six.iteritems(fit_params):
@@ -247,8 +256,19 @@ class Pipeline(_BasePipeline):
             if transform is None:
                 pass
             else:
-                Xt, _ = self._fit_single_transform(
-                    transform, name, step_idx, Xt, y, **fit_params_steps[name])
+                if memory.cachedir is None:
+                    # Just an alias
+                    cloned_transformer = transform
+                else:
+                    cloned_transformer = clone(transform)
+                # Fit or load from cache the current transfomer
+                Xt, fitted_transformer = fit_transform_one(
+                    cloned_transformer, name, None, Xt, y,
+                    **fit_params_steps[name])
+                # Update the transformer if caching is enabled
+                if memory.cachedir is not None:
+                    transform.__dict__ = fitted_transformer.__dict__.copy()
+                    self.steps[step_idx] = (name, transform)
         if self._final_estimator is None:
             return Xt, {}
         return Xt, fit_params_steps[self.steps[-1][0]]
@@ -529,112 +549,6 @@ class Pipeline(_BasePipeline):
     def _pairwise(self):
         # check if first estimator expects pairwise input
         return getattr(self.steps[0][1], '_pairwise', False)
-
-
-class CachedPipeline(Pipeline):
-    """A cached version of the Pipeline.
-
-    Sequentially apply a list of transforms and a final estimator.
-    Intermediate steps of the pipeline must be 'transforms', that is, they
-    must implement fit and transform methods.
-    The final estimator only needs to implement fit.
-    The intermediate transformers are cached. Memoizing is the transformers
-    is advantageous when fitting is time consuming.
-
-    The purpose of the pipeline is to assemble several steps that can be
-    cross-validated together while setting different parameters.
-    For this, it enables setting parameters of the various steps using their
-    names and the parameter name separated by a '__', as in the example below.
-    A step's estimator may be replaced entirely by setting the parameter
-    with its name to another estimator, or a transformer removed by setting
-    to None.
-
-    Read more in the :ref:`User Guide <cached_pipeline>`.
-
-    Parameters
-    ----------
-    steps : list
-        List of (name, transform) tuples (implementing fit/transform) that are
-        chained, in the order in which they are chained, with the last object
-        an estimator.
-
-    memory : Instance of joblib.Memory or string, optional (default=None)
-        Used to cache the output of the computation of the tree.
-        By default, the current directory is used to cache the estimators.
-        If a string is given, it is the path to the caching directory.
-        Enabling caching trigger a clone of the transformers before fitting.
-        Therefore, the effect of past calls to `fit` is nullified and
-        the setting `warm_start=True` is ignored.
-
-    Attributes
-    ----------
-    named_steps : dict
-        Read-only attribute to access any step parameter by user given name.
-        Keys are step names and values are steps parameters.
-
-    Examples
-    --------
-    >>> from sklearn.datasets import samples_generator
-    >>> from sklearn.decomposition import PCA
-    >>> from sklearn.ensemble import RandomForestClassifier
-    >>> from sklearn.externals.joblib import Memory
-    >>> from sklearn.model_selection import GridSearchCV
-    >>> from sklearn.pipeline import CachedPipeline
-    >>> from tempfile import mkdtemp
-    >>> # setup a temporary directory
-    >>> cachedir = mkdtemp()
-    >>> # setup the cache
-    >>> memory = Memory(cachedir=cachedir, verbose=0)
-    >>> # generate some data to play with
-    >>> X, y = samples_generator.make_classification(
-    ...     n_samples=100, n_informative=5, n_redundant=0, random_state=42)
-    >>> # Create a pipeline with a PCA and an RandomForestClassifier
-    >>> pca = PCA()
-    >>> clf = RandomForestClassifier()
-    >>> pipeline = CachedPipeline([('pca', pca), ('rf', clf)],
-    ...                           memory=memory)
-    >>> # Make a grid_search of the best parameters
-    >>> parameters = {'pca__n_components': (.25, .5),
-    ...               'rf__n_estimators': (10, 20)}
-    >>> # To avoid refitting the same PCA for different configuration
-    >>> # CachedPipeline will store the PCA estimator and load it
-    >>> # when required durin the grid search
-    >>> grid_search = GridSearchCV(pipeline, parameters, verbose=0)
-    >>> grid_search.fit(X, y)
-    ...                                              # doctest: +ELLIPSIS
-    GridSearchCV(...)
-
-    See also
-    --------
-    Pipeline
-        Pipeline of transforms with a final estimator.
-
-    """
-
-    def __init__(self, steps, memory=None):
-        self.memory = memory
-        super(CachedPipeline, self).__init__(steps)
-
-    def _fit_single_transform(self, transformer, name, idx_transform, X, y,
-                              **fit_params_trans):
-        memory = self.memory
-        if memory is None:
-            memory = Memory(cachedir=os.getcwd(), verbose=0)
-        elif isinstance(memory, six.string_types):
-            memory = Memory(cachedir=memory, verbose=0)
-        elif not isinstance(memory, Memory):
-            raise ValueError('memory is either `str` or a `joblib.Memory`'
-                             ' instance')
-
-        # Clone the transformer to maximize cache hits
-        cloned_transformer = clone(transformer)
-        Xt, fitted_transformer = memory.cache(_fit_transform_one)(
-            cloned_transformer, name,
-            None, X, y,
-            **fit_params_trans)
-        self.steps[idx_transform] = (name, fitted_transformer)
-
-        return Xt, fitted_transformer
 
 
 def _name_estimators(estimators):

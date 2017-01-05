@@ -1153,7 +1153,6 @@ See the :ref:`metrics` section of the user guide for further details.
    :template: class.rst
 
    pipeline.Pipeline
-   pipeline.CachedPipeline
    pipeline.FeatureUnion
 
 .. autosummary::
