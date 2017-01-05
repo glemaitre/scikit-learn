@@ -241,7 +241,7 @@ class Pipeline(_BasePipeline):
             memory = Memory(cachedir=memory, verbose=0)
         elif not isinstance(memory, Memory):
             raise ValueError('memory is either `str` or a `joblib.Memory`'
-                             ' instance')
+                             ' instance, got: %s' % memory)
         # Decorate _fit_transform_one to be able to use it
         # with cache
         fit_transform_one = memory.cache(_fit_transform_one)
@@ -257,7 +257,9 @@ class Pipeline(_BasePipeline):
                 pass
             else:
                 if memory.cachedir is None:
-                    # Just an alias
+                    # we do not clone when caching is disabled to preserve
+                    # backward compatibility and the possibility to use warm
+                    # started models in that case
                     cloned_transformer = transform
                 else:
                     cloned_transformer = clone(transform)
