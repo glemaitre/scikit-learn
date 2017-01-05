@@ -140,7 +140,7 @@ class DummyTransf(Transf):
         self.means_ = np.mean(X, axis=0)
         # Store a timestamp such that we know
         # that we have a cache object
-        self.timestamp = time.time()
+        self.timestamp_ = time.time()
         return self
 
 
@@ -867,7 +867,7 @@ def test_cached_pipeline():
         cached_pipe.fit(X, y)
         pipe.fit(X, y)
         # Get the time stamp of the tranformer in the cached pipeline
-        ts = cached_pipe.named_steps['transf'].timestamp
+        ts = cached_pipe.named_steps['transf'].timestamp_
         # Check if the results are similar
         assert_array_equal(pipe.predict(X), cached_pipe.predict(X))
         assert_array_equal(pipe.predict_proba(X), cached_pipe.predict_proba(X))
@@ -888,7 +888,7 @@ def test_cached_pipeline():
         assert_array_equal(pipe.score(X, y), cached_pipe.score(X, y))
         assert_array_equal(pipe.named_steps['transf'].means_,
                            cached_pipe.named_steps['transf'].means_)
-        assert_equal(ts, cached_pipe.named_steps['transf'].timestamp)
+        assert_equal(ts, cached_pipe.named_steps['transf'].timestamp_)
 
         # Create a new pipeline with cloned estimators
         # Check that we are reading the cache
@@ -907,6 +907,6 @@ def test_cached_pipeline():
         assert_array_equal(pipe.score(X, y), cached_pipe_2.score(X, y))
         assert_array_equal(pipe.named_steps['transf'].means_,
                            cached_pipe_2.named_steps['transf'].means_)
-        assert_equal(ts, cached_pipe_2.named_steps['transf'].timestamp)
+        assert_equal(ts, cached_pipe_2.named_steps['transf'].timestamp_)
     finally:
         shutil.rmtree(cachedir)

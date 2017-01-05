@@ -243,12 +243,12 @@ class Pipeline(_BasePipeline):
             step, param = pname.split('__', 1)
             fit_params_steps[step][param] = pval
         Xt = X
-        for idx_tr, (name, transform) in enumerate(self.steps[:-1]):
+        for step_idx, (name, transform) in enumerate(self.steps[:-1]):
             if transform is None:
                 pass
             else:
-                Xt, _ = self._fit_single_transform(transform, name, idx_tr, Xt,
-                                                   y, **fit_params_steps[name])
+                Xt, _ = self._fit_single_transform(
+                    transform, name, step_idx, Xt, y, **fit_params_steps[name])
         if self._final_estimator is None:
             return Xt, {}
         return Xt, fit_params_steps[self.steps[-1][0]]
@@ -562,6 +562,9 @@ class CachedPipeline(Pipeline):
         Used to cache the output of the computation of the tree.
         By default, the current directory is used to cache the estimators.
         If a string is given, it is the path to the caching directory.
+        Enabling caching trigger a clone of the transformers before fitting.
+        Therefore, the effect of past calls to `fit` is nullified and
+        the setting `warm_start=True` is ignored.
 
     Attributes
     ----------
@@ -624,14 +627,14 @@ class CachedPipeline(Pipeline):
                              ' instance')
 
         # Clone the transformer to maximize cache hits
-        clone_transformer = clone(transformer)
-        Xt, transform = memory.cache(_fit_transform_one)(
-            clone_transformer, name,
+        cloned_transformer = clone(transformer)
+        Xt, fitted_transformer = memory.cache(_fit_transform_one)(
+            cloned_transformer, name,
             None, X, y,
             **fit_params_trans)
-        self.steps[idx_transform] = (name, transform)
+        self.steps[idx_transform] = (name, fitted_transformer)
 
-        return Xt, transform
+        return Xt, fitted_transformer
 
 
 def _name_estimators(estimators):
