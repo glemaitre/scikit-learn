@@ -269,7 +269,7 @@ class Pipeline(_BasePipeline):
                     **fit_params_steps[name])
                 # Update the transformer if caching is enabled
                 if memory.cachedir is not None:
-                    transform.__dict__ = fitted_transformer.__dict__.copy()
+                    transform.__dict__ = fitted_transformer.__dict__
                     self.steps[step_idx] = (name, transform)
         if self._final_estimator is None:
             return Xt, {}
