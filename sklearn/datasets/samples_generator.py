@@ -21,13 +21,16 @@ from ..externals import six
 map = six.moves.map
 zip = six.moves.zip
 
+MAX_DIM_POLY = 30
+
 
 def _generate_hypercube(samples, dimensions, rng):
     """Returns distinct binary samples of length dimensions
     """
-    if dimensions > 30:
-        return np.hstack([_generate_hypercube(samples, dimensions - 30, rng),
-                          _generate_hypercube(samples, 30, rng)])
+    if dimensions >= MAX_DIM_POLY:
+        return np.hstack([_generate_hypercube(samples,
+                                              dimensions - MAX_DIM_POLY, rng),
+                          _generate_hypercube(samples, MAX_DIM_POLY, rng)])
     out = astype(sample_without_replacement(2 ** dimensions, samples,
                                             random_state=rng),
                  dtype='>u4', copy=False)
@@ -152,9 +155,11 @@ def make_classification(n_samples=100, n_features=20, n_informative=2,
         raise ValueError("Number of informative, redundant and repeated "
                          "features must sum to less than the number of total"
                          " features")
-    if 2 ** n_informative < n_classes * n_clusters_per_class:
+    if (2 ** (n_informative % MAX_DIM_POLY) <
+            n_classes * n_clusters_per_class):
         raise ValueError("n_classes * n_clusters_per_class must"
-                         " be smaller or equal 2 ** n_informative")
+                         " be smaller or equal 2 **"
+                         " (n_informative % {})".format(MAX_DIM_POLY))
     if weights and len(weights) not in [n_classes, n_classes - 1]:
         raise ValueError("Weights specified but incompatible with number "
                          "of classes.")
