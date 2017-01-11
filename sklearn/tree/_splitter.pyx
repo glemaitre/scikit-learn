@@ -123,7 +123,8 @@ cdef class Splitter:
                    object X,
                    np.ndarray[DOUBLE_t, ndim=2, mode="c"] y,
                    DOUBLE_t* sample_weight,
-                   np.ndarray X_idx_sorted=None) except *:
+                   np.ndarray X_idx_sorted=None,
+                   SIZE_t n_samples_split=1000) except *:
         """Initialize the splitter.
 
         Take in the input data X, the target Y, and optional sample weights.
@@ -243,6 +244,9 @@ cdef class BaseDenseSplitter(Splitter):
     cdef SIZE_t n_total_samples
     cdef SIZE_t* sample_mask
 
+    cdef SIZE_t n_samples_split
+    cdef SIZE_t* selected_samples_idx
+
     def __cinit__(self, Criterion criterion, SIZE_t max_features,
                   SIZE_t min_samples_leaf, double min_weight_leaf,
                   object random_state, bint presort):
@@ -254,17 +258,20 @@ cdef class BaseDenseSplitter(Splitter):
         self.X_idx_sorted_stride = 0
         self.sample_mask = NULL
         self.presort = presort
+        self.selected_samples_idx = NULL
 
     def __dealloc__(self):
         """Destructor."""
         if self.presort == 1:
             free(self.sample_mask)
+        free(self.selected_samples_idx)
 
     cdef void init(self,
                    object X,
                    np.ndarray[DOUBLE_t, ndim=2, mode="c"] y,
                    DOUBLE_t* sample_weight,
-                   np.ndarray X_idx_sorted=None) except *:
+                   np.ndarray X_idx_sorted=None,
+                   SIZE_t n_samples_split=1000) except *:
         """Initialize the splitter."""
 
         # Call parent init
@@ -286,6 +293,8 @@ cdef class BaseDenseSplitter(Splitter):
             self.n_total_samples = X.shape[0]
             safe_realloc(&self.sample_mask, self.n_total_samples)
             memset(self.sample_mask, 0, self.n_total_samples*sizeof(SIZE_t))
+
+        self.n_samples_split = n_samples_split
 
 
 cdef class BestSplitter(BaseDenseSplitter):
@@ -334,6 +343,7 @@ cdef class BestSplitter(BaseDenseSplitter):
         cdef SIZE_t feature_offset
         cdef SIZE_t i
         cdef SIZE_t j
+        cdef SIZE_t source
 
         cdef SIZE_t n_visited_features = 0
         # Number of features discovered to be constant during the split search
@@ -347,16 +357,33 @@ cdef class BestSplitter(BaseDenseSplitter):
         cdef SIZE_t partition_end
         cdef int presort = self.presort
 
+        cdef SIZE_t* selected_samples_idx = self.selected_samples_idx
+        cdef SIZE_t n_samples_split
+
         _init_split(&best, end)
+
+        # Allocate a table with the value of the between start and end
+        safe_realloc(selected_samples_idx, end - start)
+        i = 0
+        for source in range(start, end):
+            # Get the index where to put the new value
+            j = rand_int(0, i, random_state)
+            if i != j:
+                selected_samples_idx[i] = selected_samples_idx[j]
+            selected_samples_idx[j] = source
+            i += 1
+        # We can select only the samples which we are interested in
+        n_samples_split = min(end - start, self.n_samples_split)
+        safe_realloc(&selected_samples_idx, n_samples_split)
 
         # Enable local re-sorting when the range of active samples is a very
         # small fraction of the total dataset: in this case, scanning the
         # per-feature pre-sorted indices is more expensive than resorting.
-        if (end - start) < RATIO_ENABLE_PRESORTING * self.n_total_samples:
+        if n_samples_split < RATIO_ENABLE_PRESORTING * self.n_total_samples:
             presort = 0
 
         if presort:
-            for p in range(start, end):
+            for p in selected_samples_idx:
                 sample_mask[samples[p]] = 1
 
         # Sample up to max_features without replacement using a
@@ -411,22 +438,26 @@ cdef class BestSplitter(BaseDenseSplitter):
                 # sorting the array in a manner which utilizes the cache more
                 # effectively.
                 if presort:
-                    p = start
+                    p = 0
                     feature_idx_offset = self.X_idx_sorted_stride * current.feature
 
                     for i in range(self.n_total_samples):
                         j = X_idx_sorted[i + feature_idx_offset]
                         if sample_mask[j] == 1:
-                            samples[p] = j
-                            Xf[p] = X[self.X_sample_stride * j + feature_offset]
+                            samples[selected_samples_idx[p]] = j
+                            Xf[p] = X[
+                                self.X_sample_stride * j + feature_offset]
                             p += 1
                 else:
-                    for i in range(start, end):
-                        Xf[i] = X[self.X_sample_stride * samples[i] + feature_offset]
+                    p = 0
+                    for i in selected_samples_idx:
+                        Xf[p] = X[self.X_sample_stride * samples[i] +
+                                  feature_offset]
+                        p += 1
 
-                    sort(Xf + start, samples + start, end - start)
+                    sort(Xf, samples, n_samples_split)
 
-                if Xf[end - 1] <= Xf[start] + FEATURE_THRESHOLD:
+                if Xf[n_samples_split - 1] <= Xf[0] + FEATURE_THRESHOLD:
                     features[f_j] = features[n_total_constants]
                     features[n_total_constants] = current.feature
 
@@ -439,9 +470,9 @@ cdef class BestSplitter(BaseDenseSplitter):
 
                     # Evaluate all splits
                     self.criterion.reset()
-                    p = start
+                    p = 0
 
-                    while p < end:
+                    while p < n_samples_split:
                         while (p + 1 < end and
                                Xf[p + 1] <= Xf[p] + FEATURE_THRESHOLD):
                             p += 1
@@ -452,12 +483,12 @@ cdef class BestSplitter(BaseDenseSplitter):
                         # (p >= end) or (X[samples[p], current.feature] >
                         #                X[samples[p - 1], current.feature])
 
-                        if p < end:
+                        if p < n_samples_split:
                             current.pos = p
 
                             # Reject if min_samples_leaf is not guaranteed
-                            if (((current.pos - start) < min_samples_leaf) or
-                                    ((end - current.pos) < min_samples_leaf)):
+                            if (((current.pos - 0) < min_samples_leaf) or
+                                    ((n_samples_split - current.pos) < min_samples_leaf)):
                                 continue
 
                             self.criterion.update(current.pos)
@@ -479,21 +510,21 @@ cdef class BestSplitter(BaseDenseSplitter):
                                 best = current  # copy
 
         # Reorganize into samples[start:best.pos] + samples[best.pos:end]
-        if best.pos < end:
+        if best.pos < n_samples_split:
             feature_offset = X_feature_stride * best.feature
-            partition_end = end
-            p = start
+            partition_end = n_samples_split
+            p = 0
 
             while p < partition_end:
-                if X[X_sample_stride * samples[p] + feature_offset] <= best.threshold:
+                if X[X_sample_stride * samples[selected_samples_idx[p]] + feature_offset] <= best.threshold:
                     p += 1
 
                 else:
                     partition_end -= 1
 
                     tmp = samples[partition_end]
-                    samples[partition_end] = samples[p]
-                    samples[p] = tmp
+                    samples[partition_end] = samples[selected_samples_idx[p]]
+                    samples[selected_samples_idx[p]] = tmp
 
             self.criterion.reset()
             self.criterion.update(best.pos)
@@ -503,7 +534,7 @@ cdef class BestSplitter(BaseDenseSplitter):
 
         # Reset sample mask
         if presort:
-            for p in range(start, end):
+            for p in sample_selected_idx:
                 sample_mask[samples[p]] = 0
 
         # Respect invariant for constant features: the original order of
