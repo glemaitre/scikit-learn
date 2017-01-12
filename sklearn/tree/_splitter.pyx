@@ -295,6 +295,7 @@ cdef class BaseDenseSplitter(Splitter):
             memset(self.sample_mask, 0, self.n_total_samples*sizeof(SIZE_t))
 
         self.n_samples_split = n_samples_split
+        safe_realloc(&self.selected_samples_idx, self.n_total_samples)
 
 
 cdef class BestSplitter(BaseDenseSplitter):
@@ -362,19 +363,16 @@ cdef class BestSplitter(BaseDenseSplitter):
 
         _init_split(&best, end)
 
-        # Allocate a table with the value of the between start and end
-        safe_realloc(selected_samples_idx, end - start)
         i = 0
         for source in range(start, end):
             # Get the index where to put the new value
-            j = rand_int(0, i, random_state)
+            j = rand_int(0, i+1, random_state)
             if i != j:
                 selected_samples_idx[i] = selected_samples_idx[j]
             selected_samples_idx[j] = source
             i += 1
         # We can select only the samples which we are interested in
         n_samples_split = min(end - start, self.n_samples_split)
-        safe_realloc(&selected_samples_idx, n_samples_split)
 
         # Enable local re-sorting when the range of active samples is a very
         # small fraction of the total dataset: in this case, scanning the
@@ -383,7 +381,7 @@ cdef class BestSplitter(BaseDenseSplitter):
             presort = 0
 
         if presort:
-            for p in selected_samples_idx:
+            for p in selected_samples_idx[:n_samples_split]:
                 sample_mask[samples[p]] = 1
 
         # Sample up to max_features without replacement using a
@@ -450,7 +448,7 @@ cdef class BestSplitter(BaseDenseSplitter):
                             p += 1
                 else:
                     p = 0
-                    for i in selected_samples_idx:
+                    for i in selected_samples_idx[:n_samples_split]:
                         Xf[p] = X[self.X_sample_stride * samples[i] +
                                   feature_offset]
                         p += 1
@@ -534,7 +532,7 @@ cdef class BestSplitter(BaseDenseSplitter):
 
         # Reset sample mask
         if presort:
-            for p in sample_selected_idx:
+            for p in selected_samples_idx[:n_samples_split]:
                 sample_mask[samples[p]] = 0
 
         # Respect invariant for constant features: the original order of
@@ -910,7 +908,8 @@ cdef class BaseSparseSplitter(Splitter):
                    object X,
                    np.ndarray[DOUBLE_t, ndim=2, mode="c"] y,
                    DOUBLE_t* sample_weight,
-                   np.ndarray X_idx_sorted=None) except *:
+                   np.ndarray X_idx_sorted=None,
+                   SIZE_t n_samples_split=1000) except *:
         """Initialize the splitter."""
 
         # Call parent init
