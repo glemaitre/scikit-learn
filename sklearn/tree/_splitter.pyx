@@ -21,6 +21,7 @@ from libc.stdlib cimport free
 from libc.stdlib cimport qsort
 from libc.string cimport memcpy
 from libc.string cimport memset
+from libc.stdio cimport printf
 
 import numpy as np
 cimport numpy as np
@@ -377,8 +378,8 @@ cdef class BestSplitter(BaseDenseSplitter):
         # Enable local re-sorting when the range of active samples is a very
         # small fraction of the total dataset: in this case, scanning the
         # per-feature pre-sorted indices is more expensive than resorting.
-        if n_samples_split < RATIO_ENABLE_PRESORTING * self.n_total_samples:
-            presort = 0
+        # if n_samples_split < RATIO_ENABLE_PRESORTING * self.n_total_samples:
+        #     presort = 0
 
         if presort:
             for p in selected_samples_idx[:n_samples_split]:
