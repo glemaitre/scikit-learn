@@ -256,6 +256,7 @@ cdef class BaseDenseSplitter(Splitter):
         self.X_idx_sorted_ptr = NULL
         self.X_idx_sorted_stride = 0
         self.sample_mask = NULL
+        self.selected_samples_idx = NULL
         self.presort = presort
 
     def __dealloc__(self):
@@ -281,6 +282,7 @@ cdef class BaseDenseSplitter(Splitter):
         self.X = <DTYPE_t*> X_ndarray.data
         self.X_sample_stride = <SIZE_t> X.strides[0] / <SIZE_t> X.itemsize
         self.X_feature_stride = <SIZE_t> X.strides[1] / <SIZE_t> X.itemsize
+        self.n_total_samples = X.shape[0]
 
         if self.presort == 1:
             self.X_idx_sorted = X_idx_sorted
@@ -288,12 +290,13 @@ cdef class BaseDenseSplitter(Splitter):
             self.X_idx_sorted_stride = (<SIZE_t> self.X_idx_sorted.strides[1] /
                                         <SIZE_t> self.X_idx_sorted.itemsize)
 
-            self.n_total_samples = X.shape[0]
             safe_realloc(&self.sample_mask, self.n_total_samples)
             memset(self.sample_mask, 0, self.n_total_samples*sizeof(SIZE_t))
 
         self.n_samples_split = n_samples_split
         safe_realloc(&self.selected_samples_idx, self.n_total_samples)
+        memset(self.selected_samples_idx, 0,
+               self.n_total_samples*sizeof(SIZE_t))
 
 
 cdef class BestSplitter(BaseDenseSplitter):
@@ -387,8 +390,9 @@ cdef class BestSplitter(BaseDenseSplitter):
         # Enable local re-sorting when the range of active samples is a very
         # small fraction of the total dataset: in this case, scanning the
         # per-feature pre-sorted indices is more expensive than resorting.
-        if (end - start) < RATIO_ENABLE_PRESORTING * self.n_total_samples:
-            presort = 0
+        if (presort and
+            (end - start) < RATIO_ENABLE_PRESORTING * self.n_total_samples):
+                presort = 0
 
         if presort:
             for p in range(start, end):
@@ -515,9 +519,6 @@ cdef class BestSplitter(BaseDenseSplitter):
                                 best = current  # copy
 
         # Reorganize into samples[start:best.pos] + samples[best.pos:end]
-        with gil:
-            print(best.pos)
-            print(end)
         if best.pos < end:
             feature_offset = X_feature_stride * best.feature
             partition_end = end
