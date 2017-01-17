@@ -249,10 +249,6 @@ cdef class BaseDenseSplitter(Splitter):
     cdef SIZE_t n_samples_split
     cdef SIZE_t* selected_samples_idx
 
-    # criterion which is locally used to compute the impurity on the
-    # subsampled dataset
-    cdef Criterion criterion_subsample
-
     def __cinit__(self, Criterion criterion, SIZE_t max_features,
                   SIZE_t min_samples_leaf, double min_weight_leaf,
                   object random_state, bint presort):
@@ -277,7 +273,7 @@ cdef class BaseDenseSplitter(Splitter):
                    np.ndarray[DOUBLE_t, ndim=2, mode="c"] y,
                    DOUBLE_t* sample_weight,
                    np.ndarray X_idx_sorted=None,
-                   SIZE_t n_samples_split=50) except *:
+                   SIZE_t n_samples_split=1000) except *:
         """Initialize the splitter."""
 
         # Call parent init
@@ -303,8 +299,6 @@ cdef class BaseDenseSplitter(Splitter):
         # initialize the table linked to subsampling
         self.n_samples_split = n_samples_split
         safe_realloc(&self.selected_samples_idx, self.n_total_samples)
-        # initialize the criterion which will be used during subsampling
-        self.criterion_subsample = Criterion()
 
 
 cdef class BestSplitter(BaseDenseSplitter):
@@ -474,13 +468,13 @@ cdef class BestSplitter(BaseDenseSplitter):
 
                     sort(Xf, selected_samples_idx, n_samples_split)
                     # initialize the criterion for the subsampling
-                    self.criterion_subsample.init(self.y,
-                                                  self.y_stride,
-                                                  self.sample_weight,
-                                                  self.weighted_n_samples,
-                                                  selected_samples_idx,
-                                                  0,
-                                                  n_samples_split)
+                    self.criterion.init(self.y,
+                                        self.y_stride,
+                                        self.sample_weight,
+                                        self.weighted_n_samples,
+                                        selected_samples_idx,
+                                        0,
+                                        n_samples_split)
 
                 if Xf[n_samples_split - 1] <= Xf[0] + FEATURE_THRESHOLD:
                     features[f_j] = features[n_total_constants]
@@ -495,7 +489,7 @@ cdef class BestSplitter(BaseDenseSplitter):
 
                     # Evaluate all splits
                     # self.criterion.reset()
-                    self.criterion_subsample.reset()
+                    self.criterion.reset()
                     p = 0
 
                     while p < n_samples_split:
@@ -526,20 +520,20 @@ cdef class BestSplitter(BaseDenseSplitter):
                             # The index to consider is between 0 and n_samples
                             # which is related to p and not
                             # selected_samples_idx[p]
-                            self.criterion_subsample.update(p)
+                            self.criterion.update(p)
 
                             # Reject if min_weight_leaf is not satisfied
                             # if ((self.criterion.weighted_n_left < min_weight_leaf) or
                             #         (self.criterion.weighted_n_right < min_weight_leaf)):
                             #     continue
-                            if ((self.criterion_subsample.weighted_n_left <
+                            if ((self.criterion.weighted_n_left <
                                  min_weight_leaf) or
-                                (self.criterion_subsample.weighted_n_right <
+                                (self.criterion.weighted_n_right <
                                  min_weight_leaf)):
                                 continue
 
                             # current_proxy_improvement = self.criterion.proxy_impurity_improvement()
-                            current_proxy_improvement = self.criterion_subsample.proxy_impurity_improvement()
+                            current_proxy_improvement = self.criterion.proxy_impurity_improvement()
 
                             if current_proxy_improvement > best_proxy_improvement:
                                 best_proxy_improvement = current_proxy_improvement
@@ -567,6 +561,16 @@ cdef class BestSplitter(BaseDenseSplitter):
                     samples[partition_end] = samples[p]
                     samples[p] = tmp
 
+            # initialize the criterion to take into account all the data and
+            # not only the subsamples.
+            self.criterion.init(self.y,
+                                self.y_stride,
+                                self.sample_weight,
+                                self.weighted_n_samples,
+                                self.samples,
+                                start,
+                                end)
+            # Compute the impurity on the full data
             self.criterion.reset()
             self.criterion.update(best.pos)
             best.improvement = self.criterion.impurity_improvement(impurity)
