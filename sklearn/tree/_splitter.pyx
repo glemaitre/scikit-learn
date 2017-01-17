@@ -22,6 +22,8 @@ from libc.stdlib cimport qsort
 from libc.string cimport memcpy
 from libc.string cimport memset
 
+from cython cimport typeof
+
 import numpy as np
 cimport numpy as np
 np.import_array()
@@ -243,8 +245,13 @@ cdef class BaseDenseSplitter(Splitter):
     cdef SIZE_t n_total_samples
     cdef SIZE_t* sample_mask
 
+    # table and size of the dataset in the case of the subsampling
     cdef SIZE_t n_samples_split
     cdef SIZE_t* selected_samples_idx
+
+    # criterion which is locally used to compute the impurity on the
+    # subsampled dataset
+    cdef Criterion criterion_subsample
 
     def __cinit__(self, Criterion criterion, SIZE_t max_features,
                   SIZE_t min_samples_leaf, double min_weight_leaf,
@@ -270,7 +277,7 @@ cdef class BaseDenseSplitter(Splitter):
                    np.ndarray[DOUBLE_t, ndim=2, mode="c"] y,
                    DOUBLE_t* sample_weight,
                    np.ndarray X_idx_sorted=None,
-                   SIZE_t n_samples_split=1000) except *:
+                   SIZE_t n_samples_split=50) except *:
         """Initialize the splitter."""
 
         # Call parent init
@@ -293,10 +300,11 @@ cdef class BaseDenseSplitter(Splitter):
             safe_realloc(&self.sample_mask, self.n_total_samples)
             memset(self.sample_mask, 0, self.n_total_samples*sizeof(SIZE_t))
 
+        # initialize the table linked to subsampling
         self.n_samples_split = n_samples_split
         safe_realloc(&self.selected_samples_idx, self.n_total_samples)
-        memset(self.selected_samples_idx, 0,
-               self.n_total_samples*sizeof(SIZE_t))
+        # initialize the criterion which will be used during subsampling
+        self.criterion_subsample = Criterion()
 
 
 cdef class BestSplitter(BaseDenseSplitter):
@@ -465,6 +473,14 @@ cdef class BestSplitter(BaseDenseSplitter):
                                   selected_samples_idx[i] + feature_offset]
 
                     sort(Xf, selected_samples_idx, n_samples_split)
+                    # initialize the criterion for the subsampling
+                    self.criterion_subsample.init(self.y,
+                                                  self.y_stride,
+                                                  self.sample_weight,
+                                                  self.weighted_n_samples,
+                                                  selected_samples_idx,
+                                                  0,
+                                                  n_samples_split)
 
                 if Xf[n_samples_split - 1] <= Xf[0] + FEATURE_THRESHOLD:
                     features[f_j] = features[n_total_constants]
@@ -478,7 +494,8 @@ cdef class BestSplitter(BaseDenseSplitter):
                     features[f_i], features[f_j] = features[f_j], features[f_i]
 
                     # Evaluate all splits
-                    self.criterion.reset()
+                    # self.criterion.reset()
+                    self.criterion_subsample.reset()
                     p = 0
 
                     while p < n_samples_split:
@@ -494,20 +511,35 @@ cdef class BestSplitter(BaseDenseSplitter):
 
                         if p < n_samples_split:
                             current.pos = selected_samples_idx[p]
+                            # current.pos = p
 
                             # Reject if min_samples_leaf is not guaranteed
-                            if (((current.pos - start) < min_samples_leaf) or
-                                    ((end - current.pos) < min_samples_leaf)):
+                            # if (((current.pos - start) < min_samples_leaf) or
+                            #         ((end - current.pos) < min_samples_leaf)):
+                            #     continue
+                            if ((current.pos < min_samples_leaf) or
+                                ((n_samples_split - current.pos) <
+                                 min_samples_leaf)):
                                 continue
 
-                            self.criterion.update(current.pos)
+                            # self.criterion.update(current.pos)
+                            # The index to consider is between 0 and n_samples
+                            # which is related to p and not
+                            # selected_samples_idx[p]
+                            self.criterion_subsample.update(p)
 
                             # Reject if min_weight_leaf is not satisfied
-                            if ((self.criterion.weighted_n_left < min_weight_leaf) or
-                                    (self.criterion.weighted_n_right < min_weight_leaf)):
+                            # if ((self.criterion.weighted_n_left < min_weight_leaf) or
+                            #         (self.criterion.weighted_n_right < min_weight_leaf)):
+                            #     continue
+                            if ((self.criterion_subsample.weighted_n_left <
+                                 min_weight_leaf) or
+                                (self.criterion_subsample.weighted_n_right <
+                                 min_weight_leaf)):
                                 continue
 
-                            current_proxy_improvement = self.criterion.proxy_impurity_improvement()
+                            # current_proxy_improvement = self.criterion.proxy_impurity_improvement()
+                            current_proxy_improvement = self.criterion_subsample.proxy_impurity_improvement()
 
                             if current_proxy_improvement > best_proxy_improvement:
                                 best_proxy_improvement = current_proxy_improvement
