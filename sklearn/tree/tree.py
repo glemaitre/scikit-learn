@@ -84,6 +84,7 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator)):
                  splitter,
                  max_depth,
                  min_samples_split,
+                 n_samples_split,
                  min_samples_leaf,
                  min_weight_fraction_leaf,
                  max_features,
@@ -96,6 +97,7 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator)):
         self.splitter = splitter
         self.max_depth = max_depth
         self.min_samples_split = min_samples_split
+        self.n_samples_split = n_samples_split
         self.min_samples_leaf = min_samples_leaf
         self.min_weight_fraction_leaf = min_weight_fraction_leaf
         self.max_features = max_features
@@ -198,6 +200,13 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator)):
             min_samples_split = max(2, min_samples_split)
 
         min_samples_split = max(min_samples_split, 2 * min_samples_leaf)
+
+        n_samples_split = self.n_samples_split
+        if n_samples_split is None:
+            n_samples_split = 0
+        elif issparse(X) and n_samples is not None:
+            raise ValueError("Subsampling at each node is not supported with "
+                             "sparse matrices")
 
         if isinstance(self.max_features, six.string_types):
             if self.max_features == "auto":
@@ -319,6 +328,7 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator)):
                                                 self.max_features_,
                                                 min_samples_leaf,
                                                 min_weight_leaf,
+                                                n_samples_split,
                                                 random_state,
                                                 self.presort)
 
@@ -543,6 +553,11 @@ class DecisionTreeClassifier(BaseDecisionTree, ClassifierMixin):
         .. versionchanged:: 0.18
            Added float values for percentages.
 
+    n_samples_split : int or None, optional (default=None)
+        The number of samples to select at each split.
+
+        .. versionadded:: 0.19
+
     min_samples_leaf : int, float, optional (default=1)
         The minimum number of samples required to be at a leaf node:
 
@@ -663,6 +678,7 @@ class DecisionTreeClassifier(BaseDecisionTree, ClassifierMixin):
                  splitter="best",
                  max_depth=None,
                  min_samples_split=2,
+                 n_samples_split=None,
                  min_samples_leaf=1,
                  min_weight_fraction_leaf=0.,
                  max_features=None,
@@ -676,6 +692,7 @@ class DecisionTreeClassifier(BaseDecisionTree, ClassifierMixin):
             splitter=splitter,
             max_depth=max_depth,
             min_samples_split=min_samples_split,
+            n_samples_split=n_samples_split,
             min_samples_leaf=min_samples_leaf,
             min_weight_fraction_leaf=min_weight_fraction_leaf,
             max_features=max_features,
@@ -859,6 +876,11 @@ class DecisionTreeRegressor(BaseDecisionTree, RegressorMixin):
         .. versionchanged:: 0.18
            Added float values for percentages.
 
+    n_samples_split : int or None, optional (default=None)
+        The number of samples to select at each split.
+
+        .. versionadded:: 0.19
+
     min_samples_leaf : int, float, optional (default=1)
         The minimum number of samples required to be at a leaf node:
 
@@ -956,6 +978,7 @@ class DecisionTreeRegressor(BaseDecisionTree, RegressorMixin):
                  splitter="best",
                  max_depth=None,
                  min_samples_split=2,
+                 n_samples_split=None,
                  min_samples_leaf=1,
                  min_weight_fraction_leaf=0.,
                  max_features=None,
@@ -968,6 +991,7 @@ class DecisionTreeRegressor(BaseDecisionTree, RegressorMixin):
             splitter=splitter,
             max_depth=max_depth,
             min_samples_split=min_samples_split,
+            n_samples_split=n_samples_split,
             min_samples_leaf=min_samples_leaf,
             min_weight_fraction_leaf=min_weight_fraction_leaf,
             max_features=max_features,
@@ -1049,6 +1073,7 @@ class ExtraTreeClassifier(DecisionTreeClassifier):
                  splitter="random",
                  max_depth=None,
                  min_samples_split=2,
+                 n_samples_split=None,
                  min_samples_leaf=1,
                  min_weight_fraction_leaf=0.,
                  max_features="auto",
@@ -1061,6 +1086,7 @@ class ExtraTreeClassifier(DecisionTreeClassifier):
             splitter=splitter,
             max_depth=max_depth,
             min_samples_split=min_samples_split,
+            n_samples_split=n_samples_split,
             min_samples_leaf=min_samples_leaf,
             min_weight_fraction_leaf=min_weight_fraction_leaf,
             max_features=max_features,
@@ -1099,6 +1125,7 @@ class ExtraTreeRegressor(DecisionTreeRegressor):
                  splitter="random",
                  max_depth=None,
                  min_samples_split=2,
+                 n_samples_split=None,
                  min_samples_leaf=1,
                  min_weight_fraction_leaf=0.,
                  max_features="auto",
@@ -1110,6 +1137,7 @@ class ExtraTreeRegressor(DecisionTreeRegressor):
             splitter=splitter,
             max_depth=max_depth,
             min_samples_split=min_samples_split,
+            n_samples_split=n_samples_split,
             min_samples_leaf=min_samples_leaf,
             min_weight_fraction_leaf=min_weight_fraction_leaf,
             max_features=max_features,

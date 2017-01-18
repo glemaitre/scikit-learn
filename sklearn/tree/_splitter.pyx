@@ -65,7 +65,8 @@ cdef class Splitter:
 
     def __cinit__(self, Criterion criterion, SIZE_t max_features,
                   SIZE_t min_samples_leaf, double min_weight_leaf,
-                  object random_state, bint presort):
+                  SIZE_t n_samples_split, object random_state,
+                  bint presort):
         """
         Parameters
         ----------
@@ -104,6 +105,7 @@ cdef class Splitter:
         self.max_features = max_features
         self.min_samples_leaf = min_samples_leaf
         self.min_weight_leaf = min_weight_leaf
+        self.n_samples_split = n_samples_split
         self.random_state = random_state
         self.presort = presort
 
@@ -246,12 +248,13 @@ cdef class BaseDenseSplitter(Splitter):
     cdef SIZE_t* sample_mask
 
     # table and size of the dataset in the case of the subsampling
-    cdef SIZE_t n_samples_split
+    # cdef SIZE_t n_samples_split
     cdef SIZE_t* selected_samples_idx
 
     def __cinit__(self, Criterion criterion, SIZE_t max_features,
                   SIZE_t min_samples_leaf, double min_weight_leaf,
-                  object random_state, bint presort):
+                  SIZE_t n_samples_split, object random_state,
+                  bint presort):
 
         self.X = NULL
         self.X_sample_stride = 0
@@ -260,6 +263,8 @@ cdef class BaseDenseSplitter(Splitter):
         self.X_idx_sorted_stride = 0
         self.sample_mask = NULL
         self.selected_samples_idx = NULL
+        # This assignment is done in the parent class
+        # self.n_samples_split = n_samples_split
         self.presort = presort
 
     def __dealloc__(self):
@@ -272,8 +277,7 @@ cdef class BaseDenseSplitter(Splitter):
                    object X,
                    np.ndarray[DOUBLE_t, ndim=2, mode="c"] y,
                    DOUBLE_t* sample_weight,
-                   np.ndarray X_idx_sorted=None,
-                   SIZE_t n_samples_split=1000) except *:
+                   np.ndarray X_idx_sorted=None) except *:
         """Initialize the splitter."""
 
         # Call parent init
@@ -297,7 +301,6 @@ cdef class BaseDenseSplitter(Splitter):
             memset(self.sample_mask, 0, self.n_total_samples*sizeof(SIZE_t))
 
         # initialize the table linked to subsampling
-        self.n_samples_split = n_samples_split
         safe_realloc(&self.selected_samples_idx, self.n_total_samples)
 
 
@@ -308,6 +311,7 @@ cdef class BestSplitter(BaseDenseSplitter):
                                self.max_features,
                                self.min_samples_leaf,
                                self.min_weight_leaf,
+                               self.n_samples_split,
                                self.random_state,
                                self.presort), self.__getstate__())
 
@@ -367,7 +371,10 @@ cdef class BestSplitter(BaseDenseSplitter):
         _init_split(&best, end)
 
         # Compute the number of samples that we will use for this split
-        n_samples_split = min(end - start, n_samples_split)
+        if n_samples_split == 0:
+            n_samples_split = end - start
+        else:
+            n_samples_split = min(end - start, n_samples_split)
 
         # We need n_samples_split. Therefore, we shuffle the available
         # samples using Fisher-Yates shuffle.
@@ -934,7 +941,8 @@ cdef class BaseSparseSplitter(Splitter):
 
     def __cinit__(self, Criterion criterion, SIZE_t max_features,
                   SIZE_t min_samples_leaf, double min_weight_leaf,
-                  object random_state, bint presort):
+                  SIZE_t n_samples_split, object random_state,
+                  bint presort):
         # Parent __cinit__ is automatically called
 
         self.X_data = NULL
