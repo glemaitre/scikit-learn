@@ -495,7 +495,6 @@ cdef class BestSplitter(BaseDenseSplitter):
                     features[f_i], features[f_j] = features[f_j], features[f_i]
 
                     # Evaluate all splits
-                    # self.criterion.reset()
                     self.criterion.reset()
                     p = 0
 
@@ -512,34 +511,22 @@ cdef class BestSplitter(BaseDenseSplitter):
 
                         if p < n_samples_split:
                             current.pos = selected_samples_idx[p]
-                            # current.pos = p
 
                             # Reject if min_samples_leaf is not guaranteed
-                            # if (((current.pos - start) < min_samples_leaf) or
-                            #         ((end - current.pos) < min_samples_leaf)):
-                            #     continue
-                            if ((current.pos < min_samples_leaf) or
-                                ((n_samples_split - current.pos) <
-                                 min_samples_leaf)):
+                            if (((current.pos - start) < min_samples_leaf) or
+                                    ((end - current.pos) < min_samples_leaf)):
                                 continue
 
-                            # self.criterion.update(current.pos)
                             # The index to consider is between 0 and n_samples
                             # which is related to p and not
                             # selected_samples_idx[p]
                             self.criterion.update(p)
 
                             # Reject if min_weight_leaf is not satisfied
-                            # if ((self.criterion.weighted_n_left < min_weight_leaf) or
-                            #         (self.criterion.weighted_n_right < min_weight_leaf)):
-                            #     continue
-                            if ((self.criterion.weighted_n_left <
-                                 min_weight_leaf) or
-                                (self.criterion.weighted_n_right <
-                                 min_weight_leaf)):
+                            if ((self.criterion.weighted_n_left < min_weight_leaf) or
+                                    (self.criterion.weighted_n_right < min_weight_leaf)):
                                 continue
 
-                            # current_proxy_improvement = self.criterion.proxy_impurity_improvement()
                             current_proxy_improvement = self.criterion.proxy_impurity_improvement()
 
                             if current_proxy_improvement > best_proxy_improvement:
@@ -552,6 +539,15 @@ cdef class BestSplitter(BaseDenseSplitter):
                                 best = current  # copy
 
         # Reorganize into samples[start:best.pos] + samples[best.pos:end]
+        # initialize the criterion to take into account all the data and
+        # not only the subsamples.
+        self.criterion.init(self.y,
+                            self.y_stride,
+                            self.sample_weight,
+                            self.weighted_n_samples,
+                            self.samples,
+                            start,
+                            end)
         if best.pos < end:
             feature_offset = X_feature_stride * best.feature
             partition_end = end
@@ -567,16 +563,6 @@ cdef class BestSplitter(BaseDenseSplitter):
                     tmp = samples[partition_end]
                     samples[partition_end] = samples[p]
                     samples[p] = tmp
-
-            # initialize the criterion to take into account all the data and
-            # not only the subsamples.
-            self.criterion.init(self.y,
-                                self.y_stride,
-                                self.sample_weight,
-                                self.weighted_n_samples,
-                                self.samples,
-                                start,
-                                end)
             # Compute the impurity on the full data
             self.criterion.reset()
             self.criterion.update(best.pos)
