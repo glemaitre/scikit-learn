@@ -384,7 +384,7 @@ cdef class BestSplitter(BaseDenseSplitter):
             n_samples_split = end - start
             i = 0
             for j in range(start, end):
-                selected_samples_idx[i] = j
+                selected_samples_idx[i] = samples[j]
                 i += 1
         else:
             # Apply Fisher-Yates shuffle algorithm
@@ -393,8 +393,17 @@ cdef class BestSplitter(BaseDenseSplitter):
                 j = rand_int(0, i+1, random_state)
                 if i != j:
                     selected_samples_idx[i] = selected_samples_idx[j]
-                selected_samples_idx[j] = source
+                selected_samples_idx[j] = samples[source]
                 i += 1
+
+        # initialize the criterion for the subsampling
+        self.criterion.init(self.y,
+                            self.y_stride,
+                            self.sample_weight,
+                            self.weighted_n_samples,
+                            selected_samples_idx,
+                            0,
+                            n_samples_split)
 
         # Enable local re-sorting when the range of active samples is a very
         # small fraction of the total dataset: in this case, scanning the
@@ -474,14 +483,6 @@ cdef class BestSplitter(BaseDenseSplitter):
                                   selected_samples_idx[i] + feature_offset]
 
                     sort(Xf, selected_samples_idx, n_samples_split)
-                    # initialize the criterion for the subsampling
-                    self.criterion.init(self.y,
-                                        self.y_stride,
-                                        self.sample_weight,
-                                        self.weighted_n_samples,
-                                        selected_samples_idx,
-                                        0,
-                                        n_samples_split)
 
                 if Xf[n_samples_split - 1] <= Xf[0] + FEATURE_THRESHOLD:
                     features[f_j] = features[n_total_constants]
@@ -510,17 +511,18 @@ cdef class BestSplitter(BaseDenseSplitter):
                         #                X[samples[p - 1], current.feature])
 
                         if p < n_samples_split:
-                            current.pos = selected_samples_idx[p]
+                            current.pos = p
 
                             # Reject if min_samples_leaf is not guaranteed
-                            if (((current.pos - start) < min_samples_leaf) or
-                                    ((end - current.pos) < min_samples_leaf)):
+                            if ((current.pos < min_samples_leaf) or
+                                ((n_samples_split - current.pos) <
+                                 min_samples_leaf)):
                                 continue
 
                             # The index to consider is between 0 and n_samples
                             # which is related to p and not
                             # selected_samples_idx[p]
-                            self.criterion.update(p)
+                            self.criterion.update(current.pos)
 
                             # Reject if min_weight_leaf is not satisfied
                             if ((self.criterion.weighted_n_left < min_weight_leaf) or
@@ -538,6 +540,8 @@ cdef class BestSplitter(BaseDenseSplitter):
 
                                 best = current  # copy
 
+        # Shift the best position since that we start from start and not 0
+        best.pos += start
         # Reorganize into samples[start:best.pos] + samples[best.pos:end]
         # initialize the criterion to take into account all the data and
         # not only the subsamples.
