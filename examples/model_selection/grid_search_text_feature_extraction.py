@@ -1,4 +1,3 @@
-
 """
 ==========================================================
 Sample pipeline for text feature extraction and evaluation
@@ -52,6 +51,8 @@ from __future__ import print_function
 from pprint import pprint
 from time import time
 import logging
+from tempfile import mkdtemp
+from shutil import rmtree
 
 from sklearn.datasets import fetch_20newsgroups
 from sklearn.feature_extraction.text import CountVectorizer
@@ -59,6 +60,8 @@ from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.linear_model import SGDClassifier
 from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import Pipeline
+from sklearn.externals.joblib import Memory
+
 
 print(__doc__)
 
@@ -87,11 +90,13 @@ print()
 ###############################################################################
 # define a pipeline combining a text feature extractor with a simple
 # classifier
+# cachedir = mkdtemp()
+memory = Memory(cachedir='/tmp/joblib', verbose=10)
 pipeline = Pipeline([
     ('vect', CountVectorizer()),
     ('tfidf', TfidfTransformer()),
     ('clf', SGDClassifier()),
-])
+], memory=memory)
 
 # uncommenting more parameters will give better exploring power but will
 # increase processing time in a combinatorial way
@@ -112,7 +117,7 @@ if __name__ == "__main__":
 
     # find the best parameters for both the feature extraction and the
     # classifier
-    grid_search = GridSearchCV(pipeline, parameters, n_jobs=-1, verbose=1)
+    grid_search = GridSearchCV(pipeline, parameters, n_jobs=1, verbose=1)
 
     print("Performing grid search...")
     print("pipeline:", [name for name, _ in pipeline.steps])
@@ -128,3 +133,6 @@ if __name__ == "__main__":
     best_parameters = grid_search.best_estimator_.get_params()
     for param_name in sorted(parameters.keys()):
         print("\t%s: %r" % (param_name, best_parameters[param_name]))
+
+    # Delete the temporary cache before exiting
+    # rmtree(cachedir)
