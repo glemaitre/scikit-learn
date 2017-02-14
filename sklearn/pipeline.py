@@ -9,6 +9,8 @@ estimator, as a chain of transforms and estimators.
 #         Lars Buitinck
 # License: BSD
 
+import warnings
+
 from collections import defaultdict
 from abc import ABCMeta, abstractmethod
 
@@ -20,6 +22,7 @@ from .externals.joblib import Parallel, delayed, Memory
 from .externals import six
 from .utils import tosequence
 from .utils.metaestimators import if_delegate_has_method
+from .utils.validation import check_is_fitted
 
 __all__ = ['Pipeline', 'FeatureUnion']
 
@@ -655,10 +658,10 @@ class FeatureUnion(_BasePipeline, TransformerMixin):
 
     """
     def __init__(self, transformer_list, n_jobs=1, transformer_weights=None):
-        self.transformer_list = tosequence(transformer_list)
+        self._transformer_list = tosequence(transformer_list)
         self.n_jobs = n_jobs
         self.transformer_weights = transformer_weights
-        self._validate_transformers()
+        # self._validate_transformers()
 
     def get_params(self, deep=True):
         """Get parameters for this estimator.
@@ -688,8 +691,27 @@ class FeatureUnion(_BasePipeline, TransformerMixin):
         self._set_params('transformer_list', **kwargs)
         return self
 
+    @property
+    def transformer_list(self):
+        if hasattr(self, 'transformer_list_'):
+            warnings.warn("In the future, 'transformer_list' will returned the"
+                          " unfitted transformer. To get the fitted estimator,"
+                          " use 'transformer_list_' instead.", FutureWarning)
+            return self.transformer_list_
+        else:
+            return self._transformer_list
+
+    @transformer_list.setter
+    def transformer_list(self, val):
+        if hasattr(self, 'transformer_list_'):
+            warnings.warn("In the future, 'transformer_list' will returned the"
+                          " unfitted transformer. To set the fitted estimator,"
+                          " use 'transformer_list_' instead.", FutureWarning)
+            self.transformer_list_ = val
+        self._transformer_list = val
+
     def _validate_transformers(self):
-        names, transformers = zip(*self.transformer_list)
+        names, transformers = zip(*self._transformer_list)
 
         # validate names
         self._validate_names(names)
@@ -704,13 +726,24 @@ class FeatureUnion(_BasePipeline, TransformerMixin):
                                 "transform. '%s' (type %s) doesn't" %
                                 (t, type(t)))
 
-    def _iter(self):
+    def _iter(self, fitted_transformer=False):
         """Generate (name, est, weight) tuples excluding None transformers
+
+        Parameters
+        ----------
+        fitted_transformer: bool, optional (default=False)
+            Either to use unfitted or fitted transformers.
         """
         get_weight = (self.transformer_weights or {}).get
-        return ((name, trans, get_weight(name))
-                for name, trans in self.transformer_list
-                if trans is not None)
+        if fitted_transformer:
+            check_is_fitted(self, 'transformer_list_')
+            return ((name, trans, get_weight(name))
+                    for name, trans in self.transformer_list_
+                    if trans is not None)
+        else:
+            return ((name, trans, get_weight(name))
+                    for name, trans in self.transformer_list
+                    if trans is not None)
 
     def get_feature_names(self):
         """Get feature names from all transformers.
@@ -749,7 +782,7 @@ class FeatureUnion(_BasePipeline, TransformerMixin):
         self._validate_transformers()
         transformers = Parallel(n_jobs=self.n_jobs)(
             delayed(_fit_one_transformer)(trans, X, y)
-            for _, trans, _ in self._iter())
+            for _, trans, _ in self._iter(fitted_transformer=False))
         self._update_transformer_list(transformers)
         return self
 
@@ -774,7 +807,7 @@ class FeatureUnion(_BasePipeline, TransformerMixin):
         result = Parallel(n_jobs=self.n_jobs)(
             delayed(_fit_transform_one)(trans, weight, X, y,
                                         **fit_params)
-            for name, trans, weight in self._iter())
+            for name, trans, weight in self._iter(fitted_transformer=False))
 
         if not result:
             # All transformers are None
@@ -803,7 +836,7 @@ class FeatureUnion(_BasePipeline, TransformerMixin):
         """
         Xs = Parallel(n_jobs=self.n_jobs)(
             delayed(_transform_one)(trans, weight, X)
-            for name, trans, weight in self._iter())
+            for name, trans, weight in self._iter(fitted_transformer=True))
         if not Xs:
             # All transformers are None
             return np.zeros((X.shape[0], 0))
@@ -815,9 +848,9 @@ class FeatureUnion(_BasePipeline, TransformerMixin):
 
     def _update_transformer_list(self, transformers):
         transformers = iter(transformers)
-        self.transformer_list[:] = [
+        self.transformer_list_ = [
             (name, None if old is None else next(transformers))
-            for name, old in self.transformer_list
+            for name, old in self._transformer_list
         ]
 
 
