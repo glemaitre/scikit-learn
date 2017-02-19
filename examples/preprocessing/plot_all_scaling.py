@@ -1,10 +1,3 @@
-
-# coding: utf-8
-
-# In[1]:
-
-get_ipython().magic('matplotlib inline')
-
 import numpy as np
 
 from sklearn.datasets import make_blobs
@@ -31,7 +24,7 @@ y = np.where(y < np.median(y), 0, 1)
 X_min_max_scaled = MinMaxScaler().fit_transform(X)
 X_max_abs_scaled = MaxAbsScaler().fit_transform(X)
 X_standard_scaled = StandardScaler().fit_transform(X)
-X_robust_scaled = RobustScaler().fit_transform(X)
+X_robust_scaled = RobustScaler(quantile_range=(25, 75)).fit_transform(X)
 X_l2_normalized = Normalizer().fit_transform(X)
 X_quantile_normalized = QuantileNormalizer().fit_transform(X)
 
@@ -41,9 +34,9 @@ X_quantile_normalized = QuantileNormalizer().fit_transform(X)
 X = X[:, [0, 5]]
 
 def plot_distribution(X, y, hist_nbins=50, plot_title=""):
-    fig = plt.figure(figsize=(10, 10)) 
+    fig = plt.figure(figsize=(10, 10))
     fig.suptitle(plot_title, fontsize=12)
-    
+
     gs = gridspec.GridSpec(2, 2, width_ratios=[5, 1], wspace=0.02,
                            height_ratios=[5, 1], hspace=0.1)
     ax, hist_X1, hist_X0, empty = (plt.subplot(g) for g in gs)
@@ -53,7 +46,7 @@ def plot_distribution(X, y, hist_nbins=50, plot_title=""):
     colors = cm.bwr(np.array(y, dtype=float))
     ax.scatter(X[:, 0], X[:, 1],
                marker='.', s=10, lw=0, alpha=0.7, c=colors)
-    
+
     # The histogram for axis 0 and axis 1
     for hist_ax, X_feat in ((hist_X1, X[:, 1]),
                             (hist_X0, X[:, 0])):
@@ -64,12 +57,10 @@ def plot_distribution(X, y, hist_nbins=50, plot_title=""):
         else:
             orientation = 'horizontal'
             hist_ax.set_ylim(ax.get_ylim())
-            
+
         hist_ax.hist(X_feat, bins=hist_nbins, orientation=orientation,
                      color='grey')
         hist_ax.axis('off')
-
-    plt.show()
 
 plot_distribution(X, y, hist_nbins=50,
                   plot_title="The original distribution of data with outliers")
@@ -90,3 +81,4 @@ for X, technique in ((X_min_max_scaled, "min-max scaling"),
     plot_distribution(X, y, hist_nbins=50, plot_title="Distribution after %s" %
                       technique)
 
+plt.show()
