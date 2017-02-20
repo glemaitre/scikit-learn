@@ -1,8 +1,8 @@
 import numpy as np
 
-import matplotlib.pyplot as plt
+import matplotlib as mpl
+from matplotlib import pyplot as plt
 from matplotlib import cm, gridspec
-import seaborn as sns
 
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.preprocessing import minmax_scale
@@ -15,12 +15,12 @@ from sklearn.preprocessing.data import QuantileNormalizer
 from sklearn.datasets import fetch_california_housing
 
 dataset = fetch_california_housing()
-X, y = dataset.data, dataset.target
+X_full, y_full = dataset.data, dataset.target
 
 # Take only 2 features to make visualization easier
 # Feature 0 has a tapering distribution of outliers
-# Feature 5 has a few but widely separated outliers
-X = X[:, [0, 5]]
+# Feature 5 has a few but very large outliers
+X = X_full[:, [0, 5]]
 
 X_min_max_scaled = MinMaxScaler().fit_transform(X)
 X_max_abs_scaled = MaxAbsScaler().fit_transform(X)
@@ -29,28 +29,23 @@ X_robust_scaled = RobustScaler(quantile_range=(25, 75)).fit_transform(X)
 X_l2_normalized = Normalizer().fit_transform(X)
 X_quantile_normalized = QuantileNormalizer().fit_transform(X)
 
-y = minmax_scale(y)  # To make colors corresponding to the target
+y = minmax_scale(y_full)  # To make colors corresponding to the target
 
 
-def plot_distribution(axes, X, y, hist_nbins=50, plot_title="", size=(15, 10)):
-    # |          :
-    # |    DATA  : hist_X1
-    # |  ........:.........
-    # |  hist_X0 : empty
-    # |          :
-    # |____________________
-
+def plot_distribution(axes, X, y, hist_nbins=50, plot_title="", size=(15, 10),
+                      X_label="", y_label=""):
     ax, hist_X1, hist_X0, empty = axes
     empty.axis('off')
 
     ax.set_title(plot_title, fontsize=12)
+    ax.set_xlabel(X_label)
+    ax.set_ylabel(y_label)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
 
     # The scatter plot
-    colors = cm.plasma(np.array(y, dtype=float))
-    ax.scatter(X[:, 0], X[:, 1],
-               marker='.', s=20, lw=0, alpha=0.5, c=colors)
+    colors = cm.plasma_r(y)
+    ax.scatter(X[:, 0], X[:, 1], alpha=0.5, marker='o', s=5, lw=0, c=colors)
 
     # The histogram for axis 0 and axis 1
     for hist_ax, X_feat in ((hist_X1, X[:, 1]),
@@ -67,16 +62,26 @@ def plot_distribution(axes, X, y, hist_nbins=50, plot_title="", size=(15, 10)):
                      color='grey', ec='grey')
         hist_ax.axis('off')
 
-# gs2 = gridspec.GridSpec(28, 6, width_ratios=[5, 1, 5, 1, 5, 1], wspace=0.3,
-#                         height_ratios=[5, 1, 5, 1], hspace=0.3)
-# subplots2 = list(plt.subplot(g) for g in gs2)
+# Seven super-rows and two super-cols with each super-row
+# having the below structure -
+#
+#           Col0      Col1            Col2        Col3
+#            (plot1)                      (plot2)
+#
+#       |          :                |          :
+# Row0  |    DATA  : hist_X1        |    DATA  : hist_X1
+#       |__________:                |__________:
+#                  :                           :
+# Row1     hist_X0 : empty             hist_X0 : empty
+#
+# Row2    <-------Legend for y value-color map--------->
+# Row3            <BLANK SPACE>
 
-# Seven rows of 2 x 4 grids
-gs = gridspec.GridSpec(14, 4, left=3, right=4,
+gs = gridspec.GridSpec(7 * 4, 2 * 2, right=4, left=3,
                        width_ratios=[5, 1, 5, 1], wspace=0.3,
-                       height_ratios=[5, 1] * 7, hspace=0.3)
+                       height_ratios=[5, 1, 0.2, 0.5] * 7, hspace=0.5)
 subplots = list(plt.subplot(g) for g in gs)
-subplots[0].figure.set_size_inches(8, 42)
+subplots[0].figure.set_size_inches(10, 50)
 
 for i, (X, title) in enumerate((
         (X, "Unscaled data"),
@@ -86,10 +91,11 @@ for i, (X, title) in enumerate((
         (X_standard_scaled, "Data after standard scaling"),
         (X_l2_normalized, "Data after sample-wise L2 normalizing"),
         (X_quantile_normalized, "Data after quantile normalizing"))):
-    offset = 8 * i
+    offset = 16 * i
     axes = subplots[offset: offset + 2] + subplots[offset + 4: offset + 6]
     plot_distribution(axes, X, y, hist_nbins=50,
-                      plot_title=title + "\n(including outliers)")
+                      plot_title=title + "\n(including outliers)",
+                      X_label="Median Income", y_label="Number of households")
 
     X0_min, X0_99th_pc = np.percentile(X[:, 0], [0, 99])
     X1_min, X1_99th_pc = np.percentile(X[:, 1], [0, 99])
@@ -98,6 +104,19 @@ for i, (X, title) in enumerate((
     axes = subplots[offset + 2: offset + 4] + subplots[offset + 6: offset + 8]
     plot_distribution(axes, X[non_outliers], y[non_outliers], hist_nbins=50,
                       plot_title=(title +
-                                  "\n(Zoomed-in at quantile range [0, 99))"))
+                                  "\n(Zoomed-in at quantile range [0, 99))"),
+                      X_label="Median Income", y_label="Number of households")
+
+    # Plot a heatmap legend for the y, combining a row of 4 cols
+    heatmap_legend_ax = plt.subplot(gs[offset+8: offset+12])
+    norm = mpl.colors.Normalize(y_full.min(), y_full.max())
+    mpl.colorbar.ColorbarBase(heatmap_legend_ax, cmap=cm.plasma_r,
+                              norm=norm, orientation='horizontal',
+                              label='color mapping for values of y')
+
+    # Blank space to avoid overlapping of plots;
+    # plt.tight_layout does not work with gridspec, height of this row is
+    # adjusted at `height_ratios` param given to `GridSpec`
+    plt.subplot(gs[offset+12: offset+16]).axis('off')
 
 plt.show()
