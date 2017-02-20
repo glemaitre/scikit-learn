@@ -7,7 +7,10 @@ Compare the effect of different scalers on data with outliers
 =============================================================
 
 The feature 0 and feature 5 of california housing dataset contains large
-outliers that can make visualization and representation of the data difficult.
+outliers that can make visualization of the data difficult.
+
+Also linear models like :class:`sklearn.linear_model.SVM` require data which is
+normalized to the range [-1, 1].
 
 This example uses different scalers and normalizers to bring the data within a
 smaller range.
