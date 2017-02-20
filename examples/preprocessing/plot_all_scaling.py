@@ -1,3 +1,26 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+"""
+=============================================================
+Compare the effect of different scalers on data with outliers
+=============================================================
+
+The feature 0 and feature 5 of california housing dataset contains large
+outliers that can make visualization and representation of the data difficult.
+
+This example uses different scalers and normalizers to bring the data within a
+smaller range.
+
+# TODO make doc better
+"""
+from __future__ import print_function
+print(__doc__)
+
+# Author: Thomas Unterthiner
+#         Raghav RV <rvraghav93@gmail.com>
+# License: BSD 3 clause
+
 import numpy as np
 
 import matplotlib as mpl
