@@ -62,21 +62,6 @@ def plot_distribution(axes, X, y, hist_nbins=50, plot_title="", size=(15, 10),
                      color='grey', ec='grey')
         hist_ax.axis('off')
 
-# Seven super-rows and two super-cols with each super-row
-# having the below structure -
-#
-#           Col0      Col1            Col2        Col3
-#            (plot1)                      (plot2)
-#
-#       |          :                |          :
-# Row0  |    DATA  : hist_X1        |    DATA  : hist_X1
-#       |__________:                |__________:
-#                  :                           :
-# Row1     hist_X0 : empty             hist_X0 : empty
-#
-# Row2    <-------Legend for y value-color map--------->
-# Row3            <BLANK SPACE>
-
 gs = gridspec.GridSpec(7 * 4, 2 * 2, right=4, left=3,
                        width_ratios=[5, 1, 5, 1], wspace=0.3,
                        height_ratios=[5, 1, 0.2, 0.5] * 7, hspace=0.5)
