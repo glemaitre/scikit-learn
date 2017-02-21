@@ -19,8 +19,8 @@ smaller range.
 from __future__ import print_function
 print(__doc__)
 
-# Author: Thomas Unterthiner
-#         Raghav RV <rvraghav93@gmail.com>
+# Author:  Raghav RV <rvraghav93@gmail.com>
+#          Thomas Unterthiner
 # License: BSD 3 clause
 
 import numpy as np
