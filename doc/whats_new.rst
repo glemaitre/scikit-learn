@@ -46,7 +46,7 @@ New features
      particularly useful for targets with an exponential trend.
      :issue:`7655` by :user:`Karan Desai <karandesai-96>`.
 
-   - Added :class:`preprocessing.QuantileNormalizer` class for features
+   - Added :class:`preprocessing.QuantileTransformer` class for features
      normalization based on quantiles.
      :issue:`8363` by :user:`Denis Engemann <dengemann>`,
      :user:`Guillaume Lemaitre <glemaitre>`, `Olivier Grisel`_,
