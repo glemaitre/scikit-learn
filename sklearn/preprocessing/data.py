@@ -31,9 +31,24 @@ from ..utils.sparsefuncs import (inplace_column_scale,
 from ..utils.validation import (check_is_fitted, check_random_state,
                                 FLOAT_DTYPES)
 from ..utils.random import choice
+from .utils import (_hist_bin_auto,
+                    _hist_bin_doane,
+                    _hist_bin_fd,
+                    _hist_bin_rice,
+                    _hist_bin_scott,
+                    _hist_bin_sqrt,
+                    _hist_bin_sturges)
 
 BOUNDS_THRESHOLD = 1e-7
 
+# Private dict initialized at module load time
+_hist_bin_selectors = {'auto': _hist_bin_auto,
+                       'doane': _hist_bin_doane,
+                       'fd': _hist_bin_fd,
+                       'rice': _hist_bin_rice,
+                       'scott': _hist_bin_scott,
+                       'sqrt': _hist_bin_sqrt,
+                       'sturges': _hist_bin_sturges}
 
 zip = six.moves.zip
 map = six.moves.map
@@ -1954,7 +1969,10 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
 
     Attributes
     ----------
-    quantiles_ : ndarray, shape (n_quantiles, n_features)
+    n_quantiles_ : int,
+        Number of quantiles computed.
+
+    quantiles_ : ndarray, shape (n_quantiles_, n_features)
         The values corresponding the quantiles of reference.
 
     See also
@@ -1967,7 +1985,7 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
     of outliers but does not put outliers and inliers on the same scale.
     """
 
-    def __init__(self, n_quantiles=1000, output_distribution='uniform',
+    def __init__(self, n_quantiles='auto', output_distribution='uniform',
                  ignore_implicit_zeros=False, subsample=int(1e5),
                  random_state=None):
         self.n_quantiles = n_quantiles
@@ -2000,10 +2018,11 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
 
         # for compatibility issue with numpy<=1.8.X, references
         # need to be a list scaled between 0 and 100
-        references = np.linspace(0, 100, self.n_quantiles,
-                                 endpoint=True).tolist()
+        references = [np.linspace(0, 100, n_quantiles, endpoint=True).tolist()
+                      for n_quantiles in self.n_quantiles_]
         self.quantiles_ = np.transpose(
-            [np.percentile(X[subsample_idx, feature_idx], references)
+            [np.percentile(X[subsample_idx, feature_idx],
+                           references[feature_idx])
              for feature_idx in range(n_features)])
 
     def _sparse_fit(self, X):
@@ -2021,8 +2040,8 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
 
         # for compatibility issue with numpy<=1.8.X, references
         # need to be a list
-        references = np.linspace(0, 100, self.n_quantiles,
-                                 endpoint=True).tolist()
+        references = [np.linspace(0, 100, n_quantiles, endpoint=True).tolist()
+                      for n_quantiles in self.n_quantiles_]
         self.quantiles_ = []
         for feature_idx in range(n_features):
             column_nnz_data = X.data[X.indptr[feature_idx]:
@@ -2049,10 +2068,10 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
             if not column_data.size:
                 # if no nnz, an error will be raised for computing the
                 # quantiles. Force the quantiles to be zeros.
-                self.quantiles_.append([0] * len(references))
+                self.quantiles_.append([0] * len(references[feature_idx]))
             else:
                 self.quantiles_.append(
-                    np.percentile(column_data, references))
+                    np.percentile(column_data, references[feature_idx]))
         self.quantiles_ = np.transpose(self.quantiles_)
 
     def fit(self, X, y=None):
@@ -2073,7 +2092,24 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
         """
         X = check_array(X, accept_sparse='csc')
 
-        if self.n_quantiles <= 0:
+        self.n_quantiles_ = self.n_quantiles
+        if isinstance(self.n_quantiles_, six.string_types):
+            if self.n_quantiles_ not in _hist_bin_selectors:
+                raise ValueError("{0} not a valid estimator for bins".format(
+                    self.n_quantiles_))
+
+            # compute the optimal bin width per feature
+            widths = [_hist_bin_selectors[self.n_quantiles_](X_col)
+                      for X_col in X.T]
+            # compute the optimal number of quantiles per feature
+            self.n_quantiles_ = tuple(
+                [int(np.ceil((X_col.max() - X_col.min()) / width))
+                 if width else 1 for width, X_col in zip(widths, X.T)])
+
+        elif isinstance(self.n_quantiles_, numbers.Integral):
+            self.n_quantiles_ = tuple([self.n_quantiles_] * X.shape[1])
+
+        if np.any(np.array(self.n_quantiles_) <= 0):
             raise ValueError("Invalid value for 'n_quantiles': %d. "
                              "The number of quantiles must be at least one."
                              % self.n_quantiles)
@@ -2092,12 +2128,13 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
 
         # check the number of quantiles is less than the number of samples used
         # in fitting
-        if (self.n_quantiles > min(X.shape[0], self.subsample)):
+        if np.any(np.array(self.n_quantiles_) > min(X.shape[0],
+                                                    self.subsample)):
             raise ValueError('The number of quantiles is less than either the'
                              ' number which will be used during fitting. Got'
                              ' {} quantiles for {} samples.'.format(
-                                 self.n_quantiles, min(X.shape[0],
-                                                       self.subsample)))
+                                 self.n_quantiles_, min(X.shape[0],
+                                                        self.subsample)))
 
         if sparse.issparse(X):
             self._sparse_fit(X)
@@ -2142,7 +2179,8 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
         upper_bounds_idx = (X_col + BOUNDS_THRESHOLD >
                             upper_bound_x)
 
-        references = np.linspace(0, 1, self.n_quantiles, endpoint=True)
+        references = np.linspace(0, 1, self.n_quantiles_[feature_idx],
+                                 endpoint=True)
         if not inverse:
             X_col = np.interp(X_col, self.quantiles_[:, feature_idx],
                               references)
@@ -2286,7 +2324,7 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
             return self._dense_transform(X, inverse=True)
 
 
-def quantile_transform(X, axis=0, n_quantiles=1000, subsample=int(1e5),
+def quantile_transform(X, axis=0, n_quantiles='auto', subsample=int(1e5),
                        ignore_implicit_zeros=False, random_state=None):
     n = QuantileTransformer(n_quantiles=n_quantiles, subsample=subsample,
                             ignore_implicit_zeros=ignore_implicit_zeros,
