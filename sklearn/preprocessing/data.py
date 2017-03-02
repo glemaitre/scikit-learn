@@ -1945,9 +1945,34 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
 
     Parameters
     ----------
-    n_quantiles : int, optional (default=1000)
+    n_quantiles : int or str, optional (default='auto')
         Number of quantiles to be computed. It corresponds to the number
         of landmarks used to discretize the cumulative density function.
+        It can be defined with a single integer or inferred using one
+        of the method below specified with by a string.
+
+        'auto'
+            Maximum of the 'sturges' and 'fd' estimators. Provides good
+            all around performance.
+        'fd' (Freedman Diaconis Estimator)
+            Robust (resilient to outliers) estimator that takes into
+            account data variability and data size.
+        'doane'
+            An improved version of Sturges' estimator that works better
+            with non-normal datasets.
+        'scott'
+            Less robust estimator that that takes into account data
+            variability and data size.
+        'rice'
+            Estimator does not take variability into account, only data
+            size. Commonly overestimates number of bins required.
+        'sturges'
+            R's default method, only accounts for data size. Only
+            optimal for gaussian data and underestimates number of bins
+            for large non-gaussian datasets.
+        'sqrt'
+            Square root (of data size) estimator, used by Excel and
+            other programs for its speed and simplicity.
 
     output_distribution : str, optional (default='uniform')
         Marginal distribution for the transformed data. The choices are
@@ -1969,8 +1994,8 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
 
     Attributes
     ----------
-    n_quantiles_ : int,
-        Number of quantiles computed.
+    n_quantiles_ : tuple of int, shape (n_features, )
+        Corresponds to the number of quantiles used for each feature.
 
     quantiles_ : ndarray, shape (n_quantiles_, n_features)
         The values corresponding the quantiles of reference.
@@ -2108,6 +2133,10 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
 
         elif isinstance(self.n_quantiles_, numbers.Integral):
             self.n_quantiles_ = tuple([self.n_quantiles_] * X.shape[1])
+
+        else:
+            raise ValueError("'n_quantiles' has to be an integer or a string."
+                             " Got {} instead.".format(type(self.n_quantiles_))
 
         if np.any(np.array(self.n_quantiles_) <= 0):
             raise ValueError("Invalid value for 'n_quantiles': %d. "
