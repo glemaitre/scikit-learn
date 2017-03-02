@@ -873,6 +873,10 @@ def test_quantile_transform_check_error():
                       [0, 0, 2.6, 4.1, 0, 0, 2.3, 0, 9.5, 0.1]]).T
     X_neg = sparse.csc_matrix(X_neg)
 
+    assert_raises_regex(ValueError, "'n_quantiles' has to be an integer or"
+                        " a string. Got <type 'list'> instead.",
+                        QuantileTransformer(n_quantiles=[1, 2, 3]).fit,
+                                            X_neg)
     assert_raises_regex(ValueError, "Invalid value for 'n_quantiles'",
                         QuantileTransformer(n_quantiles=0).fit, X_neg)
     assert_raises_regex(ValueError, "Invalid value for 'subsample'",
