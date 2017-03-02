@@ -2136,7 +2136,8 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
 
         else:
             raise ValueError("'n_quantiles' has to be an integer or a string."
-                             " Got {} instead.".format(type(self.n_quantiles_))
+                             " Got {} instead.".format(type(
+                                 self.n_quantiles_)))
 
         if np.any(np.array(self.n_quantiles_) <= 0):
             raise ValueError("Invalid value for 'n_quantiles': %d. "
