@@ -1932,10 +1932,6 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
 
     Parameters
     ----------
-    n_quantiles : int, optional (default=1000)
-        Number of quantiles to be computed. It corresponds to the number
-        of landmarks used to discretize the cumulative density function.
-
     output_distribution : str, optional (default='uniform')
         Marginal distribution for the transformed data. The choices are
         'uniform' (default) or 'norm'.
@@ -1956,15 +1952,18 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
 
     Attributes
     ----------
-    quantiles_ : ndarray, shape (n_quantiles, n_features)
-        The values corresponding the quantiles of reference.
+    references_ : list of ndarray, length (n_features, )
+        The quantiles considers as landmarks.
+
+    quantiles_: list of ndarray, length (n_features, )
+        The features values corresponding to the reference quantiles.
 
     Examples
     --------
     >>> from sklearn.datasets import load_iris
     >>> from sklearn.preprocessing import QuantileTransformer
     >>> iris = load_iris()
-    >>> X_trans = QuantileTransformer(n_quantiles=20).fit_transform(iris.data)
+    >>> X_trans = QuantileTransformer().fit_transform(iris.data)
 
     See also
     --------
@@ -1977,14 +1976,28 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
     of outliers but does not put outliers and inliers on the same scale.
     """
 
-    def __init__(self, n_quantiles=1000, output_distribution='uniform',
+    def __init__(self, output_distribution='uniform',
                  ignore_implicit_zeros=False, subsample=int(1e5),
                  random_state=None):
-        self.n_quantiles = n_quantiles
         self.output_distribution = output_distribution
         self.ignore_implicit_zeros = ignore_implicit_zeros
         self.subsample = subsample
         self.random_state = random_state
+
+    def _fit_column(self, X_col, feature_idx):
+        """Private function to compute quantiles and references"""
+        if not X_col.size:
+            # if no nnz, an error will be raised for computing the
+            # quantiles. Force the quantiles to be zeros.
+            quantiles = np.array([0])
+            references = np.array([0])
+        else:
+            quantiles = np.unique(X_col)
+            references = (np.array([
+                stats.percentileofscore(X_col, q, kind='mean')
+                for q in quantiles]) / 100)
+
+        return references, quantiles
 
     def _dense_fit(self, X):
         """Compute percentiles for dense matrices.
@@ -2008,13 +2021,13 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
         else:
             subsample_idx = slice(None)
 
-        # for compatibility issue with numpy<=1.8.X, references
-        # need to be a list scaled between 0 and 100
-        references = np.linspace(0, 100, self.n_quantiles,
-                                 endpoint=True).tolist()
-        self.quantiles_ = np.transpose(
-            [np.percentile(X[subsample_idx, feature_idx], references)
-             for feature_idx in range(n_features)])
+        self.references_ = []
+        self.quantiles_ = []
+        for feature_idx in range(n_features):
+            ref, qua = self._fit_column(X[subsample_idx, feature_idx],
+                                        feature_idx)
+            self.quantiles_.append(qua)
+            self.references_.append(ref)
 
     def _sparse_fit(self, X):
         """Compute percentiles for sparse matrices.
@@ -2029,11 +2042,8 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
 
         n_samples, n_features = X.shape
 
-        # for compatibility issue with numpy<=1.8.X, references
-        # need to be a list
-        references = np.linspace(0, 100, self.n_quantiles,
-                                 endpoint=True).tolist()
         self.quantiles_ = []
+        self.references_ = []
         for feature_idx in range(n_features):
             column_nnz_data = X.data[X.indptr[feature_idx]:
                                      X.indptr[feature_idx + 1]]
@@ -2056,14 +2066,10 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
                 else:
                     column_data = np.zeros(shape=n_samples, dtype=X.dtype)
                 column_data[:len(column_nnz_data)] = column_nnz_data
-            if not column_data.size:
-                # if no nnz, an error will be raised for computing the
-                # quantiles. Force the quantiles to be zeros.
-                self.quantiles_.append([0] * len(references))
-            else:
-                self.quantiles_.append(
-                    np.percentile(column_data, references))
-        self.quantiles_ = np.transpose(self.quantiles_)
+
+            ref, qua = self._fit_column(column_data, feature_idx)
+            self.quantiles_.append(qua)
+            self.references_.append(ref)
 
     def fit(self, X, y=None):
         """Compute the quantiles used for transforming.
@@ -2083,11 +2089,6 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
         """
         X = check_array(X, accept_sparse='csc')
 
-        if self.n_quantiles <= 0:
-            raise ValueError("Invalid value for 'n_quantiles': %d. "
-                             "The number of quantiles must be at least one."
-                             % self.n_quantiles)
-
         if self.subsample <= 0:
             raise ValueError("Invalid value for 'subsample': %d. "
                              "The number of quantiles must be at least one."
@@ -2100,31 +2101,10 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
             raise ValueError('QuantileTransformer only accepts non-negative'
                              ' sparse matrices')
 
-        # check the number of quantiles is less than the number of samples used
-        # in fitting
-        if (self.n_quantiles > min(X.shape[0], self.subsample)):
-            raise ValueError('The number of quantiles is less than either the'
-                             ' number which will be used during fitting. Got'
-                             ' {} quantiles for {} samples.'.format(
-                                 self.n_quantiles, min(X.shape[0],
-                                                       self.subsample)))
-
         if sparse.issparse(X):
             self._sparse_fit(X)
         else:
             self._dense_fit(X)
-
-        # check that the quantiles are strictly monotonically increasing
-        for feature_idx, quantile in enumerate(self.quantiles_):
-            if not np.all(np.diff(quantile) > 0):
-                warnings.warn('The feature values corresponding to the'
-                              ' quantiles computed are not strictly'
-                              ' monotonically increasing for the feature #'
-                              '{}. This configuration is ill-posed for the'
-                              ' QuantileTransformer. If this feature is'
-                              ' a categorical feature, be aware that this'
-                              ' transformation will not work.'.format(
-                                  feature_idx))
 
         return self
 
@@ -2135,15 +2115,15 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
         # older version of scipy do not handle tuple as fill_value
         # clipping the value before transform solve the issue
         if not inverse:
-            lower_bound_x = self.quantiles_[0, feature_idx]
-            upper_bound_x = self.quantiles_[-1, feature_idx]
+            lower_bound_x = self.quantiles_[feature_idx][0]
+            upper_bound_x = self.quantiles_[feature_idx][-1]
             lower_bound_y = 0
             upper_bound_y = 1
         else:
             lower_bound_x = 0
             upper_bound_x = 1
-            lower_bound_y = self.quantiles_[0, feature_idx]
-            upper_bound_y = self.quantiles_[-1, feature_idx]
+            lower_bound_y = self.quantiles_[feature_idx][0]
+            upper_bound_y = self.quantiles_[feature_idx][-1]
             #  for inverse transform, match a uniform PDF
             X_col = output_distribution.cdf(X_col)
         # find index for lower and higher bounds
@@ -2152,13 +2132,12 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
         upper_bounds_idx = (X_col + BOUNDS_THRESHOLD >
                             upper_bound_x)
 
-        references = np.linspace(0, 1, self.n_quantiles, endpoint=True)
         if not inverse:
-            X_col = np.interp(X_col, self.quantiles_[:, feature_idx],
-                              references)
+            X_col = np.interp(X_col, self.quantiles_[feature_idx],
+                              self.references_[feature_idx])
         else:
-            X_col = np.interp(X_col, references,
-                              self.quantiles_[:, feature_idx])
+            X_col = np.interp(X_col, self.references_[feature_idx],
+                              self.quantiles_[feature_idx])
 
         X_col[upper_bounds_idx] = upper_bound_y
         X_col[lower_bounds_idx] = lower_bound_y
@@ -2238,11 +2217,11 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
                              ' sparse matrices')
         check_is_fitted(self, 'quantiles_')
         # check that the dimension of X are adequate with the fitted data
-        if X.shape[1] != self.quantiles_.shape[1]:
+        if X.shape[1] != len(self.quantiles_):
             raise ValueError('X does not have the same number of feature than'
                              ' the previously fitted data. Got {} instead of'
                              ' {}'.format(X.shape[1],
-                                          self.quantiles_.shape[1]))
+                                          len(self.quantiles_)))
         # check the output PDF
         if self.output_distribution not in ('norm', 'uniform'):
             raise ValueError("'output_distribution' has to be either 'norm' or"
@@ -2330,10 +2309,6 @@ def quantile_transform(X, axis=0, n_quantiles=1000,
         axis used to normalize the data along. If 1, independently normalize
         each sample, otherwise (if 0) normalize each feature.
 
-    n_quantiles : int, optional (default=1000)
-        Number of quantiles to be computed. It corresponds to the number
-        of landmarks used to discretize the cumulative density function.
-
     output_distribution : str, optional (default='uniform')
         Marginal distribution for the transformed data. The choices are
         'uniform' (default) or 'norm'.
@@ -2352,17 +2327,12 @@ def quantile_transform(X, axis=0, n_quantiles=1000,
         If None, the random number generator is the RandomState instance used
         by np.random.
 
-    Attributes
-    ----------
-    quantiles_ : ndarray, shape (n_quantiles, n_features)
-        The values corresponding the quantiles of reference.
-
     Examples
     --------
     >>> from sklearn.datasets import load_iris
     >>> from sklearn.preprocessing import quantile_transform
     >>> iris = load_iris()
-    >>> X_trans = quantile_transform(iris.data, n_quantiles=20)
+    >>> X_trans = quantile_transform(iris.data)
 
     See also
     --------
@@ -2376,7 +2346,7 @@ def quantile_transform(X, axis=0, n_quantiles=1000,
     robust_scale : perform robust standardization that removes the influence
     of outliers but does not put outliers and inliers on the same scale.
     """
-    n = QuantileTransformer(n_quantiles=n_quantiles, subsample=subsample,
+    n = QuantileTransformer(subsample=subsample,
                             ignore_implicit_zeros=ignore_implicit_zeros,
                             random_state=random_state)
     if axis == 0:

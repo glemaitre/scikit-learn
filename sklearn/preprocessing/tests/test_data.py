@@ -855,7 +855,7 @@ def test_robust_scaler_iris_quantiles():
 
 def test_quantile_transform_iris():
     X = iris.data
-    transformer = QuantileTransformer(n_quantiles=30)
+    transformer = QuantileTransformer()
     X_trans = transformer.fit_transform(X)
     assert_array_almost_equal(np.min(X_trans, axis=0), 0.)
     assert_array_almost_equal(np.max(X_trans, axis=0), 1.)
@@ -873,12 +873,10 @@ def test_quantile_transform_check_error():
                       [0, 0, 2.6, 4.1, 0, 0, 2.3, 0, 9.5, 0.1]]).T
     X_neg = sparse.csc_matrix(X_neg)
 
-    assert_raises_regex(ValueError, "Invalid value for 'n_quantiles'",
-                        QuantileTransformer(n_quantiles=0).fit, X_neg)
     assert_raises_regex(ValueError, "Invalid value for 'subsample'",
                         QuantileTransformer(subsample=0).fit, X_neg)
 
-    transformer = QuantileTransformer(n_quantiles=10)
+    transformer = QuantileTransformer()
     assert_raises_regex(ValueError, "QuantileTransformer only accepts "
                         "non-negative sparse matrices", transformer.fit, X_neg)
     transformer.fit(X)
@@ -901,12 +899,11 @@ def test_quantile_transform_check_error():
     assert_raises_regex(ValueError, "'output_distribution' has to be either"
                         " 'norm' or 'uniform'. Got rnd instead.",
                         QuantileTransformer(
-                            n_quantiles=10,
                             output_distribution='rnd').fit_transform, X)
     assert_raises_regex(ValueError, "'output_distribution' has to be either"
                         " 'norm' or 'uniform'. Got rnd instead.",
-                        QuantileTransformer(n_quantiles=10,
-                                            output_distribution='rnd').fit(
+                        QuantileTransformer(
+                            output_distribution='rnd').fit(
                             X).inverse_transform, X)
 
 
@@ -914,8 +911,7 @@ def test_quantile_transform_ignore_zeros():
     X = np.array([[0, 0, 0, 0, 0],
                   [1, 0, 2, 2, 1]]).T
     X_sparse = sparse.csc_matrix(X)
-    transformer = QuantileTransformer(ignore_implicit_zeros=True,
-                                      n_quantiles=5)
+    transformer = QuantileTransformer(ignore_implicit_zeros=True)
 
     # dense case -> warning raise
     assert_warns_message(UserWarning, "'ignore_implicit_zeros' takes effect"
@@ -945,11 +941,10 @@ def test_quantile_transform_ignore_zeros():
                      [0., 0.]])
     assert_almost_equal(X_gt, X_trans.A)
 
-    transformer = QuantileTransformer(ignore_implicit_zeros=True,
-                                      n_quantiles=5)
-    X_data = np.array([-1, -1, 1, 0, 0, 0, 1, -1, 1])
-    X_col = np.array([0, 0, 1, 1, 1, 1, 1, 1, 1])
-    X_row = np.array([0, 4, 0, 1, 2, 3, 4, 5, 6])
+    transformer = QuantileTransformer(ignore_implicit_zeros=True)
+    X_data = np.array([-1, -1, 1, 0, -1, 0, 1, -1])
+    X_col = np.array([0, 0, 1, 1, 1, 1, 1, 1])
+    X_row = np.array([0, 4, 0, 1, 2, 3, 4, 5])
     X_sparse = sparse.csc_matrix((X_data, (X_row, X_col)))
     X_trans = transformer.fit_transform(X_sparse)
     X_gt = np.array([[0, 1],
@@ -957,8 +952,7 @@ def test_quantile_transform_ignore_zeros():
                      [0, 0.5],
                      [0, 0.5],
                      [0, 1],
-                     [0, 0],
-                     [0, 1]])
+                     [0, 0]])
     assert_almost_equal(X_gt, X_trans.A)
     assert_almost_equal(X_sparse.A, transformer.inverse_transform(X_trans).A)
 
@@ -968,7 +962,7 @@ def test_quantile_transform_dense_toy():
                   [2, 4, 6, 8, 10],
                   [2.6, 4.1, 2.3, 9.5, 0.1]]).T
 
-    transformer = QuantileTransformer(n_quantiles=5)
+    transformer = QuantileTransformer()
     transformer.fit(X)
 
     X_trans = transformer.fit_transform(X)
@@ -992,7 +986,6 @@ def test_quantile_transform_dense_toy():
     # FIXME: there is not comparison for the moment
     random_state = 42
     transformer.set_params(**{'subsample': 3,
-                              'n_quantiles': 2,
                               'random_state': random_state})
     X_trans = transformer.fit_transform(X)
 
@@ -1004,7 +997,7 @@ def test_quantile_transform_sparse_toy():
 
     X = sparse.csc_matrix(X)
 
-    transformer = QuantileTransformer(n_quantiles=10)
+    transformer = QuantileTransformer()
     transformer.fit(X)
 
     X_trans = transformer.fit_transform(X)
@@ -1014,7 +1007,7 @@ def test_quantile_transform_sparse_toy():
     X_trans_inv = transformer.inverse_transform(X_trans)
     assert_array_almost_equal(X.toarray(), X_trans_inv.toarray())
 
-    transformer_dense = QuantileTransformer(n_quantiles=10).fit(X.toarray())
+    transformer_dense = QuantileTransformer().fit(X.toarray())
 
     X_trans = transformer_dense.transform(X)
     assert_array_almost_equal(np.min(X_trans.toarray(), axis=0), 0.)
@@ -1027,7 +1020,6 @@ def test_quantile_transform_sparse_toy():
     # FIXME: there is not comparison for the moment
     random_state = 42
     transformer.set_params(**{'subsample': 3,
-                              'n_quantiles': 2,
                               'random_state': random_state})
     X_trans = transformer.fit_transform(X)
 
@@ -1037,21 +1029,21 @@ def test_quantile_transform_axis1():
                   [2, 4, 6, 8, 10],
                   [2.6, 4.1, 2.3, 9.5, 0.1]])
 
-    X_trans_a0 = quantile_transform(X.T, axis=0, n_quantiles=5)
-    X_trans_a1 = quantile_transform(X, axis=1, n_quantiles=5)
+    X_trans_a0 = quantile_transform(X.T, axis=0)
+    X_trans_a1 = quantile_transform(X, axis=1)
     assert_array_almost_equal(X_trans_a0, X_trans_a1.T)
 
 
-def test_qunatile_transform_bounds():
+def test_quantile_transform_bounds():
     X_dense = np.array([[0, 0],
                         [0, 0],
                         [1, 0]])
     X_sparse = sparse.csc_matrix(X_dense)
 
     # check sparse and dense are consistent
-    X_trans = QuantileTransformer(n_quantiles=3).fit_transform(X_dense)
+    X_trans = QuantileTransformer().fit_transform(X_dense)
     assert_array_almost_equal(X_trans, X_dense)
-    X_trans_sp = QuantileTransformer(n_quantiles=3).fit_transform(X_sparse)
+    X_trans_sp = QuantileTransformer().fit_transform(X_sparse)
     assert_array_almost_equal(X_trans_sp.A, X_dense)
     assert_array_almost_equal(X_trans, X_trans_sp.A)
 
@@ -1061,13 +1053,13 @@ def test_qunatile_transform_bounds():
                   [1, 0.5, 0]]).T
     X1 = np.array([[0, 0, 1],
                    [0.1, 0.5, 0.1]]).T
-    qn = QuantileTransformer(n_quantiles=3).fit(X)
+    qn = QuantileTransformer().fit(X)
     X_trans = qn.transform(X1)
     assert_array_almost_equal(X_trans, X1)
 
 
 def test_quantile_transform_pickling():
-    qn = QuantileTransformer(n_quantiles=100)
+    qn = QuantileTransformer()
 
     qn_ser = pickle.dumps(qn, pickle.HIGHEST_PROTOCOL)
     qn2 = pickle.loads(qn_ser)
