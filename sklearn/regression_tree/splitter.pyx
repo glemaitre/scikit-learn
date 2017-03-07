@@ -1,15 +1,9 @@
-from __future__ import division, print_function
-
-from numpy import isnan
-
-from .stats_node import StatsNode
-from .split_record import SplitRecord
-from .criterion import impurity_improvement
-
-FEATURE_THRESHOLD = 1e-7
+# cython: cdivision=True
+# cython: boundscheck=False
+# cython: wraparound=False
 
 
-class Splitter(object):
+cdef class Splitter(object):
     """New type of splitter driven by data
 
     Parameters
@@ -41,10 +35,12 @@ class Splitter(object):
         The best split record found after iterating all the samples.
     """
 
-    def __init__(self, X, y, sample_weight, sum_total_weighted_samples,
-                 feature_idx, start_idx,
-                 split_record,
-                 min_samples_leaf, min_weight_leaf):
+    def __cinit__(self, np.ndarray[DOUBLE_t, ndim=2] X,
+                  np.ndarray[DOUBLE_t, ndim=2] y,
+                  np.ndarray[DOUBLE_t, ndim=1] sample_weight,
+                  DOUBLE_t sum_total_weighted_samples, SIZE_t feature_idx,
+                  SIZE_t start_idx, SplitRecord split_record,
+                  SIZE_t min_samples_leaf, DOUBLE_t min_weight_leaf):
         # store the information related to the dataset
         self.X = X
         self.y = y
@@ -58,20 +54,21 @@ class Splitter(object):
 
         # split record to work with
         self.split_record = SplitRecord()
-
-        split_record.copy_to(self.split_record)
+        self.split_record.copy_from(split_record)
+        # Update the feature and position
         self.split_record.feature = self.feature_idx
         self.split_record.pos = self.start_idx
 
         self.best_split_record = SplitRecord()
         # split to store the best split record
-        split_record.copy_to(self.best_split_record)
+        self.best_split_record.copy_from(split_record)
 
         # parameters for early stop of split
         self.min_samples_leaf = min_samples_leaf
         self.min_weight_leaf = min_weight_leaf
 
-    def reset(self, feature_idx, start_idx, split_record):
+    cpdef reset(self, SIZE_t feature_idx, SIZE_t start_idx,
+                    SplitRecord split_record):
         """Reset a splitter with a new samples set.
         It could correspond to a new feature to be scanned.
         """
@@ -81,49 +78,62 @@ class Splitter(object):
         self.prev_idx = start_idx
 
         # split record to work with
-        split_record.copy_to(self.split_record)
+        self.split_record.copy_from(split_record)
         self.split_record.feature = self.feature_idx
         self.split_record.pos = self.start_idx
         # split to store the best split record
-        split_record.copy_to(self.best_split_record)
+        self.best_split_record.copy_from(split_record)
 
-    def update_stats(self, sample_idx):
+    cpdef update_stats(self, SIZE_t sample_idx):
+        # FIXME This needs a cleaner approach
 
         # make an update of the statistics
         # collect the statistics to add to the left node
-        stats_samples = StatsNode(
-            sum_y=self.y[sample_idx] * self.sample_weight[sample_idx],
-            sum_sq_y=(self.y[sample_idx] ** 2.0 *
-                      self.sample_weight[sample_idx]),
+
+        cdef np.ndarray[DOUBLE_t, ndims=2] y
+        cdef np.ndarray[DOUBLE_t, ndims=1] sample_weight
+
+        StatsNode l_stats = self.split_record.l_stats
+        StatsNode r_stats = self.split_record.r_stats
+        StatsNode c_stats = self.split_record.c_stats
+
+        self.temp = StatsNode(
+            sum_y=y[sample_idx] * sample_weight[sample_idx],
+            sum_sq_y=(y[sample_idx, 0] ** 2.0 *
+                      sample_weight[sample_idx]),
             n_samples=1,
-            sum_weighted_samples=self.sample_weight[sample_idx])
+            sum_weighted_samples=sample_weight[sample_idx]))
 
         # add these statistics to the left child
-        self.split_record.l_stats += stats_samples
-        # update the statistics of the right child
-        self.split_record.r_stats = (self.split_record.c_stats -
-                                     self.split_record.l_stats)
+        self.split_record.l_stats.sum_y += y[sample_idx] * sample_weight[sample_idx]
+        self.SplitRecord
+        # update the statistics of the right child based on the new l_stats
+        self.split_record.r_stats.copy_from(self.split_record.c_stats)
+        self.split_record.r_stats.sub(self.split_record.l_stats)
 
-    def node_evaluate_split(self, sample_idx):
+    cpdef node_evaluate_split(self, SIZE_t sample_idx):
         """Update the impurity and check the corresponding split should be
         kept.
         """
-        feat_i = self.feature_idx
+        cdef DOUBLE_t c_impurity_improvement
+        cdef SIZE_t feat_i = self.feature_idx
+
+        cdef np.ndarray[DOUBLE_t, ndims=2] X
 
         # check that the two consecutive samples are not the same
-        b_samples_var =  (abs(self.X[sample_idx, feat_i] -
-                              self.X[self.prev_idx, feat_i]) >
-                          FEATURE_THRESHOLD)
+        cdef bint b_samples_var =  (fabs(X[sample_idx, feat_i] -
+                                         X[self.prev_idx, feat_i]) >
+                                    FEATURE_THRESHOLD)
 
         # check that there is enough samples to make a split
-        b_n_samples = not (
+        cdef bint b_n_samples = not (
             self.split_record.l_stats.n_samples <
             self.min_samples_leaf or
             (self.split_record.r_stats.n_samples <
              self.min_samples_leaf))
 
         # check that the weights corresponding to samples is great enough
-        b_weight_samples = not(
+        cdef bint b_weight_samples = not(
             self.split_record.l_stats.sum_weighted_samples <
             self.min_weight_leaf or
             self.split_record.r_stats.sum_weighted_samples <
@@ -145,8 +155,8 @@ class Splitter(object):
                 self.best_split_record.reset(
                     feature=feat_i,
                     pos=self.prev_idx,
-                    threshold=((self.X[sample_idx, feat_i] +
-                                self.X[self.prev_idx, feat_i]) / 2.),
+                    threshold=((X[sample_idx, feat_i] +
+                                X[self.prev_idx, feat_i]) / 2.),
                     impurity=self.split_record.impurity,
                     impurity_improvement=c_impurity_improvement,
                     nid=self.split_record.nid,
