@@ -1,12 +1,23 @@
+import os
 import numpy
 from numpy.distutils.misc_util import Configuration
 
 
 def configuration(parent_package="", top_path=None):
     config = Configuration("ensemble", parent_package, top_path)
+    libraries = []
+    if os.name == 'posix':
+        libraries.append('m')
+
     config.add_extension("_gradient_boosting",
                          sources=["_gradient_boosting.pyx"],
                          include_dirs=[numpy.get_include()])
+
+    config.add_extension("_fast_tree",
+                         sources=["_fast_tree.pyx"],
+                         include_dirs=[numpy.get_include()],
+                         libraries=libraries,
+                         extra_compile_args=["-O3", "-std=c++11"])
 
     config.add_subpackage("tests")
 
