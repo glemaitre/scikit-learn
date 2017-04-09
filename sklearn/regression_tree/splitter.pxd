@@ -1,3 +1,7 @@
+# distutils: language = c++
+
+from libcpp.
+
 from libc.math cimport fabs
 cimport numpy as np
 from .criterion import impurity_improvement
@@ -11,72 +15,54 @@ cdef DOUBLE_t NAN = <DOUBLE_t>np.nan
 cdef DOUBLE_t INF = <DOUBLE_t>np.inf
 cdef DOUBLE_t FEATURE_THRESHOLD = 1e-7
 
-cdef class Splitter:
-    cdef np.ndarray X
-    cdef np.ndarray y
-    cdef np.ndarray sample_weight
-    cdef DOUBLE_t sum_total_weighted_samples
-    cdef SIZE_t feature_idx
-    cdef SIZE_t start_idx
-    cdef SIZE_t prev_idx
-    cdef SplitRecord split_record
-    cdef public SplitRecord best_split_record
-    cdef SIZE_t min_samples_leaf
-    cdef DOUBLE_t min_weight_leaf
-
-    cdef StatsNode temp
-
-    cpdef reset(self, SIZE_t feature_idx, SIZE_t start_idx,
-                SplitRecord split_record)
-    cpdef update_stats(self, SIZE_t sample_idx)
-    cpdef node_evaluate_split(self, SIZE_t sample_idx)
-
-cdef struct SplitRecord:
-    cdef public SIZE_t feature
-    cdef public SIZE_t pos
-    cdef public DOUBLE_t threshold
-    cdef public DOUBLE_t impurity
-    cdef public DOUBLE_t impurity_improvement
-    cdef public SIZE_t nid
-
-    cdef public StatsNode c_stats
-    cdef public StatsNode l_stats
-    cdef public StatsNode r_stats
-
 cdef struct NodeStats:
     DOUBLE_t sum_y
-    DOUBLE_t sum_sq_y
+    DOUBLE_t sum_y_sq
     SIZE_t n_samples
-    DOUBLE_t sum_weighted_samples
+    DOUBLE_t sum_sample_weights
 
-cdef inline void set_SplitRecord(
-        SplitRecord* split_record, SIZE_t feature=0, SIZE_t pos=0,
-        DOUBLE_t threshold=0.0, DOUBLE_t impurity=0.0,
-        DOUBLE_t impurity_improvement=0.0,
-        SIZE_t nid=0, StatsNode *c_stats=NULL, StatsNode *l_stats=NULL,
-        StatsNode *r_stats=NULL):
-    split_record[0].feature = feature
-    split_record[0].pos = pos
-    split_record[0].threshold = threshold
-    split_record[0].impurity = impurity
-    split_record[0].impurity_improvement = impurity_improvement
-    split_record[0].nid = nid
+cdef inline void init_NodeStats(NodeStats* stats) nogil:
+    stats[0].sum_y = 0.0
+    stats[0].sum_y_sq = 0.0
+    stats[0].n_samples = 0
+    stats[0].sum_sample_weights = 0.0
 
-    if c_stats != NULL:
-        copy_NodeStats(c_stats, &split_record[0].c_stats)
-    if l_stats != NULL:
-        copy_NodeStats(l_stats, &split_record[0].l_stats)
-    if r_stats != NULL:
-        copy_NodeStats(r_stats, &split_record[0].r_stats)
+cdef struct Node:
+    cdef NodeStats stats
+    cdef DOUBLE_t impurity
+    cdef SIZE_t parent_node_id
+    cdef SIZE_t right_node_id
+    cdef SIZE_t left_node_id
 
-cdef inline void init_NodeStats(NodeStats* node):
-    node[0].sum_y = 0.0
-    node[0].sum_sq_y = 0.0
-    node[0].n_samples = 0
-    node[0].sum_weighted_samples = 0.0
+cdef struct Split:
+    cdef SIZE_t feature
+    cdef DOUBLE_t threshold
+    cdef DOUBLE_t impurity_improvement
 
-cdef inline void copy_NodeStats(NodeStats* src, NodeStats* dest):
+cdef struct SplitRecord:
+    cdef Split split
+
+    cdef SIZE_t split_idx
+    cdef SIZE_t prev_idx
+    cdef SIZE_t node_id
+
+    cdef NodeStats left_stats
+    cdef NodeStats right_stats
+
+cdef inline void init_SplitRecord(SplitRecord* split_record) nogil:
+    split_record[0].feature = 0
+    split_record[0].split_idx = 0
+    split_record[0].prev_idx = 0
+    split_record[0].threshold = NAN
+    split_record[0].impurity = INF
+    split_record[0].impurity_improvement = -INF
+    split_record[0].node_id = 0
+
+    init_NodeStats(&split_record[0].left_stats)
+    init_NodeStats(&split_record[0].right_stats)
+
+cdef inline void copy_NodeStats(NodeStats* src, NodeStats* dest) nogil:
     dest[0].sum_y = src[0].sum_y
-    dest[0].sum_sq_y = src[0].sum_sq_y
+    dest[0].sum_y_sq = src[0].sum_y_sq
     dest[0].n_samples = src[0].n_samples
-    dest[0].sum_weighted_samples = src[0].sum_weighted_samples
+    dest[0].sum_sample_weights = src[0].sum_sample_weights

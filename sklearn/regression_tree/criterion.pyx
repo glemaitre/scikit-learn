@@ -15,7 +15,7 @@ cdef SIZE_t MSE_CRITERION = 0
 cpdef _impurity_mse_py(stats_node):
     return _impurity_mse(stats_node)
 
-cdef inline DOUBLE_t _impurity_mse(StatsNode stats_node) nogil except -1:
+cdef inline DOUBLE_t _impurity_mse(NodeStats* stats) nogil except -1:
     """Compute the impurity in MSE sense
 
     Parameters
@@ -29,10 +29,10 @@ cdef inline DOUBLE_t _impurity_mse(StatsNode stats_node) nogil except -1:
         The impurity.
     """
     cdef DOUBLE_t impurity
-    impurity = (stats_node.sum_sq_y /
-                stats_node.sum_weighted_samples)
-    impurity -= ((stats_node.sum_y /
-                  stats_node.sum_weighted_samples) ** 2.0)
+    impurity = (stats[0].sum_sq_y /
+                stats[0].sum_weighted_samples)
+    impurity -= ((stats[0].sum_y /
+                  stats[0].sum_weighted_samples) ** 2.0)
     return impurity
 
 

@@ -1,3 +1,5 @@
+# Decision_tree_learning
+
 """
 This module implement a regression tree specifically design for the
 gradient-boosting regression trees.
@@ -9,7 +11,10 @@ import numbers
 from collections import defaultdict
 from math import ceil
 
+from libcpp.unordered_map import unordered_map as umap
+
 import numpy as np
+cimport numpy as cnp
 
 from ..tree.tree import BaseDecisionTree
 from ..base import RegressorMixin
@@ -19,7 +24,7 @@ from ..externals import six
 from .splitter import Splitter
 from .split_record import SplitRecord
 from .stats_node import StatsNode
-from .criterion import _impurity_mse
+from .criterion import _impurity_mse_py
 
 from ..tree._tree import Tree
 from ..tree import _tree
@@ -363,57 +368,187 @@ class RegressionTree(BaseDecisionTree, RegressorMixin):
                              ".shape = {})".format(X.shape,
                                                    X_idx_sorted.shape))
 
-        self.tree_ = Tree(self.n_features_, self.n_classes_, self.n_outputs_)
+        self._build_tree(X, y, X_idx_sorted, sample_weight, weighted_n_samples,
+                         max_features, max_depth, min_samples_split,
+                         min_samples_leaf, min_weight_fraction_leaf,
+                         min_impurity_split)
+        return self
+
+    cpdef int self._build_tree(np.ndarray[DTYPE_t, ndim=2] X,
+                               np.ndarray[SIZE_t, ndim=2] X_idx_sorted,
+                               np.ndarray[DOUBLE_t, ndim=1] y,
+                               np.ndarray[DOUBLE_t, ndim=1] sample_weight,
+                               DOUBLE_t weighted_n_samples,
+                               SIZE_t max_features, SIZE_t max_depth,
+                               SIZE_t min_samples_split, SIZE_t min_samples_leaf,
+                               DOUBLE_t min_weight_fraction_leaf,
+                               DOUBLE_t min_impurity_split,
+                               random_state) except 0:
+        cdef Node* nodes
+        cdef SIZE_t n_nodes
+
+        cdef SIZE_t current_depth = 0
+        cdef bint early_stop = 0
+
+        cdef SIZE_t n_samples = X.shape[0]
+        cdef SIZE_t n_features = X.shape[1]
+        cdef SIZE_t n_outputs = 1  # TODO Support n_outputs > 1
+
+        # The id-s of all expanding nodes (nodes that are not leaf at
+        # the current height/level)
+        cdef SIZE_t* expanding_nodes
+        cdef SIZE_t n_expanding_nodes
+
+        cdef SplitRecord* expanding_current_split_records
+        cdef SplitRecord* expanding_best_split_records
+
+        # XXX Is it cleaner to directly use
+        # umap[SIZE_t, <SplitRecord, SplitRecord>]
+        # or is this better as expanding_current_records will be contiguous
+        cdef umap[SIZE_t, SIZE_t]* node_id_to_record_idx_map
+
+        cdef SIZE_t node_id
+        cdef SIZE_t i, j, p q
+
+        cdef double sum_y, sum_y_sq, mean_y, impurity, impurity_improvement
+        cdef double* value_array
+
+        # XXX For sparse this should be a map?
+        cdef SIZE_t* sample_idx_to_node_id_map
+        safe_realloc(&sample_idx_to_node_id_map, n_samples)
+
+        n_expanding_nodes = 1  # Starting with one node, the root node with all the data
+        safe_realloc(&expanding_current_split_records, n_expanding_nodes)
+        safe_realloc(&expanding_best_split_records, n_expanding_nodes)
+
+        for i in range(n_samples):
+            # All samples belong to the root node
+            sample_idx_to_node_id_map[i] = 1
+
+        # n_classes is set to 3, the number of statistic that you store
+        # for each node.
+        # This is a hack to avoid additional structure(s) to
+        # store the sum_y, sum_y_sq of each node and reuse the
+        # self.tree_.value which will be a 3D array with one 2D array having
+        # data as [[mean_y, sum_y, sum_y_sq] per output] per node
+        # XXX Is this hack okay or should we do it differently?
+        self.tree_ = Tree(n_features=n_features, n_classes=3,
+                          n_outputs=n_outputs)
+
+        node_id = self.tree_._add_node(self,
+                                       parent=TREE_UNDEFINED,
+                                       is_left=false, is_leaf=false,
+                                       feature=TREE_UNDEFINED,
+                                       threshold=NAN,
+                                       impurity=INFINITY,
+                                       n_node_samples=n_samples,
+                                       weighted_n_samples=np.sum(
+                                           sample_weight))
+
+        # Update the statistics for this root node
+        for i in range(n_outputs):
+          value_array = self.tree_.value[node_id][i]
+          weighted_n_node_samples = (
+            self.tree_.node_id[node_id].weighted_n_node_samples)
+
+          # sum_y
+          value_array[1] = np.sum(np.ravel(y) * sample_weight)
+          # mean_y, this will be the prediction value for this node
+          value_array[0] = value_array[1] / weighted_n_node_samples
+          # sum_sq_y
+          value_array[2] = np.sum(np.ravel(y ** 2) * sample_weight)
+
+          self.tree_.node[node_id].impurity = _impurity_mse(
+              sum_y, sum_y_sq,
+              self.tree.nodes[node_id].weighted_n_node_samples)
+
+        n_expanding_nodes = 1
+        safe_realloc(&expanding_nodes, n_expanding_nodes)
+        # Root is the only expanding node for now
+        expanding_nodes[0] = node_id
+
+        for i in range(n_samples):
+            # All the samples belong to the root node
+            sample_idx_to_node_id_map[i] = 1
+
+        # Allocate memory in heap  XXX Remember to `del` it before
+        # Mapping the tree ``node_id`` to the index of the split record in the
+        # expanding_nodes array.
+        node_id_to_record_idx_map = new umap[SIZE_t, SIZE_t]()
+        node_id_to_record_idx_map[1] = 0
+
+        while (n_expanding_nodes <= 0 or early_stop or
+                   current_depth >= max_depth):
+
+            current_depth += 1
+
+            # expanding_nodes contains the list of node_id-s that can be
+            # expanded (split) into further partitions
+            for expanding_node_i in range(n_expanding_nodes):
+                node_id = expanding_nodes[expanding_node_i]
+                # Store a map entry to help access index via node id
+                node_id_to_array_idx[node_id] = expanding_node_i
+
+                # expanding_nodes is 0-indexed, thanks to node_id_to_array_idx
+                safe_realloc(&current_splits, n_expanding_nodes)
+                safe_realloc(&best_splits, n_expanding_nodes)
+
+                # One working SplitRecord object per expanding node
+                init_SplitRecord(&current_splits[expanding_node_i])
+                # Update with statistics of root node
+                current_splits[expanding_node_i].node_id = node_id
+                # Initially all the data is assumed to be in right and later we
+                # traverse by moving one sample at a time to the left partition
+                # So, set 0 to left and copy the whole node statistics to the
+                # right
+                init_NodeStats(&current_splits[expanding_node_i].left_stats)
+                copy_NodeStats(&nodes[node_id].stats,
+                               &current_splits[expanding_node_i].right_stats)
+
+        # One best-so-far SplitRecord object per expanding node
+        parent_split_records[1].c_stats = &node_stats_array[1]
+        parent_split_records[1].impurity = impurity
 
         weighted_n_samples = np.sum(sample_weight)
 
         # initialize the number of splitter
-        n_splitters = 0
+
         # the array to map the samples to the correct splitter
         X_nid = np.zeros(y.size, dtype=int)
+
         # the list of splitter at each round
         splitter_list = []
+
         # the output split record
         split_record_map = defaultdict(lambda: None)
 
-        # create the root node statistics
-        root_stats = StatsNode(
-            sum_y=np.sum(np.ravel(y) * sample_weight),
-            sum_sq_y=np.sum(np.ravel(y ** 2) * sample_weight),
-            n_samples=n_samples,
-            sum_weighted_samples=weighted_n_samples)
-        # create the parent split record
-        parent_split_record = SplitRecord()
-        # affect the stats to the record
-        parent_split_record.c_stats = root_stats
-        # compute the impurity for the parent node
-        # FIXME only MSE impurity for the moment
-        parent_split_record.impurity = _impurity_mse(root_stats)
 
-        parent_split_record.nid = self.tree_._add_node_py(
-            parent=TREE_UNDEFINED,
-            is_left=1, is_leaf=TREE_LEAF,
-            feature=FEAT_UNKNOWN,
-            threshold=TREE_UNDEFINED,
-            impurity=parent_split_record.impurity,
-            n_node_samples=n_samples,
-            weighted_n_node_samples=weighted_n_samples,
-            node_value=(root_stats.sum_y /
-                        root_stats.sum_weighted_samples))
+        impurity = _impurity_mse_py(root_stats)
 
-        # Create a dictionary to store the parents split overtime
-        parent_split_map = {parent_split_record.nid: parent_split_record}
-        # find the node to be extended
-        expandable_nids = list(parent_split_map.keys())
+        # We start with the root node
+        safe_realloc(&expandable_node_ids, 1)
+        safe_realloc(&node_split_records, 1)
+        safe_realloc(&parent_node_ids, 1)
+        safe_realloc(&node_stats_array, 1)
+
+        # create the root node statistics for the first parent
+        len_split_records = 1
+        n_explandables = 1
+        expandable_node_ids[0] = node_id_p
+        init_SplitRecord(&parent_split_records[0])
+        node_stats_array[0].sum_y=np.sum(np.ravel(y) * sample_weight),
+        node_stats_array[0].sum_sq_y=np.sum(np.ravel(y ** 2) * sample_weight),
+        node_stats_array[0].n_samples=n_samples,
+        node_stats_array[0].sum_weighted_samples=weighted_n_samples)
+        parent_split_records[0].c_stats = &node_stats_array[0]
+        parent_split_records[0].impurity = impurity
 
         current_depth = 0
         while current_depth < max_depth:
-            # see if we should add or remove splitter
-            n_splitters = len(expandable_nids)
-            curr_n_splitters = len(splitter_list)
+            if n_explandables > n_split_records:
+                # Extend the split_records array if needed
+                safe_realoc(&parent_split_records, n_explandables)
 
-            # add splitters
-            if n_splitters - curr_n_splitters > 0:
                 splitter_list += [Splitter(X, y, sample_weight,
                                            weighted_n_samples,
                                            FEAT_UNKNOWN, TREE_UNDEFINED,
@@ -435,6 +570,8 @@ class RegressionTree(BaseDecisionTree, RegressorMixin):
             shuffled_feature_idx = random_state.choice(np.arange(X.shape[1]),
                                                        size=self.max_features_,
                                                        replace=False)
+
+            joblibparallel(find_best_split)
             # get the feature
             for feat_i in shuffled_feature_idx:
                 # Get the sorted index
@@ -445,6 +582,7 @@ class RegressionTree(BaseDecisionTree, RegressorMixin):
                 for i, nid in enumerate(expandable_nids):
                     splitter_map[nid].reset(feat_i, X_col[0],
                                             parent_split_map[nid])
+
 
                 # scans all samples and evaluate all possible splits for all
                 # the different splitters
@@ -461,8 +599,9 @@ class RegressionTree(BaseDecisionTree, RegressorMixin):
                     if ((split_record_map[nid] is None) or
                             (splitter_map[nid].best_split_record.impurity_improvement >
                              split_record_map[nid].impurity_improvement)):
+                        best = splitter_map[nid].best_split_record
                         split_record_map[nid] = SplitRecord()
-                        splitter_map[nid].best_split_record.copy_to(split_record_map[nid])
+                        split_record_map[nid].copy_from(best)
 
             feature_update_X_nid = []
             for nid in expandable_nids:
@@ -475,7 +614,10 @@ class RegressionTree(BaseDecisionTree, RegressorMixin):
 
                     # create the left and right which have been found
                     # from the parent splits
-                    left_sr, right_sr = best_split.expand_record()
+                    print("1")
+                    print(hasattr(best_split, 'expand_record'))
+                    1/0
+                    #left_sr, right_sr = best_split.expand_record()
 
                     # the statistics for the children are not computed yet
                     # add a node for left child
@@ -555,7 +697,7 @@ class RegressionTree(BaseDecisionTree, RegressorMixin):
                             if split_record_map[parent_nid].feature == feat_i:
                                 # if the feature correspond, we can update the
                                 # feature
-                                parent_n_left_samples = split_record_map[
+                                parent_n_leeft_samples = split_record_map[
                                     parent_nid].l_stats.n_samples
 
                                 # no threshold found -> this is a leaf
@@ -594,3 +736,17 @@ class RegressionTree(BaseDecisionTree, RegressorMixin):
             current_depth += 1
 
         return self
+
+        # Create the parent split record
+        # compute the impurity for the parent node
+        # FIXME only MSE impurity for the moment
+        node_id_p = self.tree_._add_node_py(
+                parent=TREE_UNDEFINED,
+                is_left=1, is_leaf=TREE_LEAF,
+                feature=FEAT_UNKNOWN,
+                threshold=TREE_UNDEFINED,
+                impurity=impurity,
+                n_node_samples=n_samples,
+                weighted_n_node_samples=weighted_n_samples,
+                node_value=(root_stats.sum_y /
+                            root_stats.sum_weighted_samples))
