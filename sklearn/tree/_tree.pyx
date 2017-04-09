@@ -758,6 +758,8 @@ cdef class Tree:
             else:
                 self.nodes[parent].right_child = node_id
 
+        node.parent = parent
+
         if is_leaf:
             node.left_child = _TREE_LEAF
             node.right_child = _TREE_LEAF
