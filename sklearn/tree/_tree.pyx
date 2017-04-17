@@ -704,27 +704,23 @@ cdef class Tree:
         self.capacity = capacity
         return 0
 
-    cpdef SIZE_t _update_node_py(self, SIZE_t node_id, SIZE_t left_child,
-                                 SIZE_t right_child, double threshold,
-                                 double impurity, SIZE_t feature,
-                                 SIZE_t n_node_samples,
-                                 double weighted_n_node_samples):
+    cdef SIZE_t _update_node(self, SIZE_t node_id, SIZE_t left_child,
+                             SIZE_t right_child, double threshold,
+                             double impurity, SIZE_t feature) nogil except -1:
         cdef Node* node = &self.nodes[node_id]
         node.left_child = left_child
         node.right_child = right_child
         node.threshold = threshold
         node.feature = feature
         node.impurity = impurity
-        node.n_node_samples = n_node_samples
-        node.weighted_n_node_samples = weighted_n_node_samples
+        return 0
 
-    cpdef SIZE_t _add_node_py(self, SIZE_t parent, bint is_left, bint is_leaf,
-                              SIZE_t feature, double threshold,
-                              double impurity,
-                              SIZE_t n_node_samples,
-                              double weighted_n_node_samples,
-                              # FIXME must be an array for multioutput
-                              double node_value):
+    cdef SIZE_t _add_node_and_update_value(
+            self, SIZE_t parent, bint is_left, bint is_leaf, SIZE_t feature,
+            double threshold, double impurity, SIZE_t n_node_samples,
+            double weighted_n_node_samples,
+            # FIXME must be an array for multioutput
+            double node_value):
         node_id = self._add_node(parent, is_left, is_leaf, feature, threshold,
                                  impurity, n_node_samples,
                                  weighted_n_node_samples)
