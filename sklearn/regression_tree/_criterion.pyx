@@ -1,29 +1,28 @@
-# cython: boundscheck=False
 # cython: cdivision=True
 
 from ._stats_node cimport StatsNode
 
 
-cdef double _impurity_mse(StatsNode stats_node):
-    """Compute the impurity in MSE sense
+# cdef double _impurity_mse(StatsNode stats_node):
+#     """Compute the impurity in MSE sense
 
-    Parameters
-    ----------
-    stats_node: StatsNode,
-        The split record from which to compute the impurity
+#     Parameters
+#     ----------
+#     stats_node: StatsNode,
+#         The split record from which to compute the impurity
 
-    Returns
-    -------
-    impurity: double,
-        The impurity.
-    """
-    cdef double impurity
-    impurity = (stats_node.sum_sq_y /
-                stats_node.sum_weighted_samples)
-    impurity -= ((stats_node.sum_y /
-                  stats_node.sum_weighted_samples) ** 2.0)
+#     Returns
+#     -------
+#     impurity: double,
+#         The impurity.
+#     """
+#     cdef double impurity
+#     impurity = (stats_node.sum_sq_y /
+#                 stats_node.sum_weighted_samples)
+#     impurity -= ((stats_node.sum_y /
+#                   stats_node.sum_weighted_samples) ** 2.0)
 
-    return impurity
+#     return impurity
 
 
 cpdef double impurity_mse(double sum_y, double sum_sq_y, int n_samples,
