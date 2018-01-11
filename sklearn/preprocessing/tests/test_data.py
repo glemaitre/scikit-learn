@@ -968,6 +968,36 @@ def test_quantile_transform_check_error():
                          transformer.transform, 10)
 
 
+@pytest.mark.parametrize(
+    "missing_values, dtype",
+    [(np.nan, np.float64),
+     (-1, np.int32)]
+)
+def test_quantile_transform_missing_values(missing_values, dtype):
+    X = np.array([[0, 1],
+                  [0, 0],
+                  [missing_values, 2],
+                  [0, missing_values],
+                  [0, 1]], dtype=dtype)
+    X_sparse = sparse.csc_matrix(X)
+
+    transformer = QuantileTransformer(n_quantiles=5,
+                                      missing_values=missing_values)
+    X_expected = np.array([[0, 0.5],
+                           [0, 0],
+                           [missing_values, 1],
+                           [0, missing_values],
+                           [0, 0.5]])
+
+    X_trans = transformer.fit_transform(X)
+    print(X_expected)
+    print(X_trans)
+    assert_almost_equal(X_expected, X_trans)
+
+    X_trans = transformer.fit_transform(X_sparse)
+    assert_almost_equal(X_expected, X_trans.A)
+
+
 def test_quantile_transform_sparse_ignore_zeros():
     X = np.array([[0, 1],
                   [0, 0],

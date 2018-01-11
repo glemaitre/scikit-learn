@@ -1,3 +1,5 @@
+# coding: utf-8
+
 # Authors: Alexandre Gramfort <alexandre.gramfort@inria.fr>
 #          Mathieu Blondel <mathieu@mblondel.org>
 #          Olivier Grisel <olivier.grisel@ensta.org>
@@ -33,6 +35,7 @@ from ..utils.sparsefuncs import (inplace_column_scale,
 from ..utils.validation import (check_is_fitted, check_random_state,
                                 FLOAT_DTYPES)
 from .label import LabelEncoder
+from .imputation import _get_mask
 
 
 BOUNDS_THRESHOLD = 1e-7
@@ -2164,6 +2167,11 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
         Set to False to perform inplace transformation and avoid a copy (if the
         input is already a numpy array).
 
+    missing_values : int or "NaN", optional (default="NaN")
+        The placeholder for the missing values. All occurrences of
+        missing_values will be preserved. For missing values encoded as np.nan,
+        use the string value "NaN".
+
     Attributes
     ----------
     quantiles_ : ndarray, shape (n_quantiles, n_features)
@@ -2201,13 +2209,14 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
 
     def __init__(self, n_quantiles=1000, output_distribution='uniform',
                  ignore_implicit_zeros=False, subsample=int(1e5),
-                 random_state=None, copy=True):
+                 random_state=None, copy=True, missing_values="NaN"):
         self.n_quantiles = n_quantiles
         self.output_distribution = output_distribution
         self.ignore_implicit_zeros = ignore_implicit_zeros
         self.subsample = subsample
         self.random_state = random_state
         self.copy = copy
+        self.missing_values = missing_values
 
     def _dense_fit(self, X, random_state):
         """Compute percentiles for dense matrices.
@@ -2232,7 +2241,11 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
                                                     size=self.subsample,
                                                     replace=False)
                 col = col.take(subsample_idx, mode='clip')
-            self.quantiles_.append(np.percentile(col, references))
+            col = col[~_get_mask(col, self.missing_values)]
+            if not col.size:
+                self.quantiles_.append([0] * len(references))
+            else:
+                self.quantiles_.append(np.percentile(col, references))
         self.quantiles_ = np.transpose(self.quantiles_)
 
     def _sparse_fit(self, X, random_state):
@@ -2270,6 +2283,9 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
                 else:
                     column_data = np.zeros(shape=n_samples, dtype=X.dtype)
                 column_data[:len(column_nnz_data)] = column_nnz_data
+
+            column_data = column_data[~_get_mask(column_data,
+                                                 self.missing_values)]
 
             if not column_data.size:
                 # if no nnz, an error will be raised for computing the
@@ -2333,6 +2349,10 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
             output_distribution = self.output_distribution
         output_distribution = getattr(stats, output_distribution)
 
+        mask_missing_values = _get_mask(X_col, self.missing_values)
+        X_col = X_col.astype(np.float64)
+        X_col[mask_missing_values] = np.nan
+
         # older version of scipy do not handle tuple as fill_value
         # clipping the value before transform solve the issue
         if not inverse:
@@ -2381,18 +2401,37 @@ class QuantileTransformer(BaseEstimator, TransformerMixin):
                                                     np.spacing(1)))
             X_col = np.clip(X_col, clip_min, clip_max)
 
+        X_col[mask_missing_values] = self.missing_values
+
         return X_col
+
+    # FIXME: to be addressed by #10455
+    def _assert_finite_or_nan(self, X):
+        """Check that X contain finite or NaN values."""
+        X = np.asanyarray(X)
+        if (X.dtype.char in np.typecodes['AllFloat']
+                and not np.isfinite(X[~np.isnan(X)].sum())
+                and not np.isfinite(X[~np.isnan(X)]).all()):
+            raise ValueError("Input contains infinity"
+                             " or a value too large for %r." % X.dtype)
 
     def _check_inputs(self, X, accept_sparse_negative=False):
         """Check inputs before fit and transform"""
+        # FIXME: to be addressed by #10455
         X = check_array(X, accept_sparse='csc', copy=self.copy,
-                        dtype=[np.float64, np.float32])
+                        dtype=[np.float32, np.float64, np.int32, np.int64],
+                        force_all_finite=False)
+        # we accept nan values but not infinite values.
+        self._assert_finite_or_nan(X.data if sparse.issparse(X) else X)
         # we only accept positive sparse matrix when ignore_implicit_zeros is
         # false and that we call fit or transform.
-        if (not accept_sparse_negative and not self.ignore_implicit_zeros and
-                (sparse.issparse(X) and np.any(X.data < 0))):
-            raise ValueError('QuantileTransformer only accepts non-negative'
-                             ' sparse matrices.')
+        # comparison with NaN will raise a warning which we make silent
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore')
+            if (not accept_sparse_negative and not self.ignore_implicit_zeros
+                    and (sparse.issparse(X) and np.any(X.data < 0))):
+                raise ValueError('QuantileTransformer only accepts'
+                                 ' non-negative sparse matrices.')
 
         # check the output PDF
         if self.output_distribution not in ('normal', 'uniform'):
