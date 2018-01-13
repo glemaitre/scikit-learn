@@ -262,3 +262,14 @@ def test_fowlkes_mallows_score_properties():
     # symmetric and permutation(both together)
     score_both = fowlkes_mallows_score(labels_b, (labels_a + 2) % 3)
     assert_almost_equal(score_both, expected)
+
+
+def test_int_overflow_mutual_info_score():
+    x = np.array([1] * (52632 + 2529) + [2] * (14660 + 793) +
+                 [3] * (3271 + 204) + [4] * (814 + 39) + [5] * (316 + 20))
+    y = np.array([0] * 52632 + [1] * 2529 + [0] * 14660 + [1] * 793 +
+                 [0] * 3271 + [1] * 204 + [0] * 814 + [1] * 39 + [0] * 316 +
+                 [1] * 20)
+
+    x = mutual_info_score(x.ravel(), y.ravel())
+    assert np.isfinite(x)
