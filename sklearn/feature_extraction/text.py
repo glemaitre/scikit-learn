@@ -29,8 +29,11 @@ from ..externals.six.moves import xrange
 from ..preprocessing import normalize
 from .hashing import FeatureHasher
 from .stop_words import ENGLISH_STOP_WORDS
+from ..utils import check_array
 from ..utils.validation import check_is_fitted
 from ..utils.fixes import sp_version
+
+DTYPES = (np.float16, np.float32, np.float64, np.int32, np.int64)
 
 __all__ = ['CountVectorizer',
            'ENGLISH_STOP_WORDS',
@@ -536,7 +539,7 @@ def _document_frequency(X):
     if sp.isspmatrix_csr(X):
         return np.bincount(X.indices, minlength=X.shape[1])
     else:
-        return np.diff(sp.csc_matrix(X, copy=False).indptr)
+        return np.diff(X.indptr)
 
 
 class CountVectorizer(BaseEstimator, VectorizerMixin):
@@ -1040,6 +1043,9 @@ class TfidfTransformer(BaseEstimator, TransformerMixin):
     sublinear_tf : boolean, default=False
         Apply sublinear tf scaling, i.e. replace tf with 1 + log(tf).
 
+    dtype : type, optional, default=np.float64
+        Type of the matrix returned by fit_transform() or transform().
+
     References
     ----------
 
@@ -1052,11 +1058,12 @@ class TfidfTransformer(BaseEstimator, TransformerMixin):
     """
 
     def __init__(self, norm='l2', use_idf=True, smooth_idf=True,
-                 sublinear_tf=False):
+                 sublinear_tf=False, dtype=np.float64):
         self.norm = norm
         self.use_idf = use_idf
         self.smooth_idf = smooth_idf
         self.sublinear_tf = sublinear_tf
+        self.dtype = dtype
 
     def fit(self, X, y=None):
         """Learn the idf vector (global term weights)
@@ -1066,6 +1073,7 @@ class TfidfTransformer(BaseEstimator, TransformerMixin):
         X : sparse matrix, [n_samples, n_features]
             a matrix of term/token counts
         """
+        X = check_array(X, accept_sparse='csc', dtype=DTYPES)
         if not sp.issparse(X):
             X = sp.csc_matrix(X)
         if self.use_idf:
@@ -1078,9 +1086,10 @@ class TfidfTransformer(BaseEstimator, TransformerMixin):
 
             # log+1 instead of log makes sure terms with zero idf don't get
             # suppressed entirely.
-            idf = np.log(float(n_samples) / df) + 1.0
-            self._idf_diag = sp.spdiags(idf, diags=0, m=n_features,
-                                        n=n_features, format='csr')
+            idf = np.log(n_samples / df) + 1
+            self._idf_diag = sp.diags(idf, offsets=0,
+                                      shape=(n_features, n_features),
+                                      format='csr', dtype=self.dtype)
 
         return self
 
@@ -1100,12 +1109,9 @@ class TfidfTransformer(BaseEstimator, TransformerMixin):
         -------
         vectors : sparse matrix, [n_samples, n_features]
         """
-        if hasattr(X, 'dtype') and np.issubdtype(X.dtype, np.floating):
-            # preserve float family dtype
-            X = sp.csr_matrix(X, copy=copy)
-        else:
-            # convert counts or binary occurrences to floats
-            X = sp.csr_matrix(X, dtype=np.float64, copy=copy)
+        X = check_array(X, accept_sparse='csr', dtype=self.dtype)
+        if not sp.issparse(X):
+            X = sp.csr_matrix(X, dtype=self.dtype, copy=copy)
 
         n_samples, n_features = X.shape
 
@@ -1247,7 +1253,7 @@ class TfidfVectorizer(CountVectorizer):
         outputs will have only 0/1 values, only that the tf term in tf-idf
         is binary. (Set idf and normalization to False to get 0/1 outputs.)
 
-    dtype : type, optional
+    dtype : type, optional, default=np.float64
         Type of the matrix returned by fit_transform() or transform().
 
     norm : 'l1', 'l2' or None, optional
@@ -1305,7 +1311,7 @@ class TfidfVectorizer(CountVectorizer):
                  stop_words=None, token_pattern=r"(?u)\b\w\w+\b",
                  ngram_range=(1, 1), max_df=1.0, min_df=1,
                  max_features=None, vocabulary=None, binary=False,
-                 dtype=np.int64, norm='l2', use_idf=True, smooth_idf=True,
+                 dtype=np.float64, norm='l2', use_idf=True, smooth_idf=True,
                  sublinear_tf=False):
 
         super(TfidfVectorizer, self).__init__(
@@ -1314,12 +1320,12 @@ class TfidfVectorizer(CountVectorizer):
             preprocessor=preprocessor, tokenizer=tokenizer, analyzer=analyzer,
             stop_words=stop_words, token_pattern=token_pattern,
             ngram_range=ngram_range, max_df=max_df, min_df=min_df,
-            max_features=max_features, vocabulary=vocabulary, binary=binary,
-            dtype=dtype)
+            max_features=max_features, vocabulary=vocabulary, binary=binary)
 
         self._tfidf = TfidfTransformer(norm=norm, use_idf=use_idf,
                                        smooth_idf=smooth_idf,
-                                       sublinear_tf=sublinear_tf)
+                                       sublinear_tf=sublinear_tf,
+                                       dtype=dtype)
 
     # Broadcast the TF-IDF parameters to the underlying transformer instance
     # for easy grid search and repr

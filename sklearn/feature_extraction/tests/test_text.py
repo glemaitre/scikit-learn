@@ -458,7 +458,7 @@ def test_vectorizer():
     # test the direct tfidf vectorizer
     # (equivalent to term count vectorizer + tfidf transformer)
     train_data = iter(ALL_FOOD_DOCS[:-1])
-    tv = TfidfVectorizer(norm='l1')
+    tv = TfidfVectorizer(norm='l1', dtype=np.float32)
 
     tv.max_df = v1.max_df
     tfidf2 = tv.fit_transform(train_data).toarray()

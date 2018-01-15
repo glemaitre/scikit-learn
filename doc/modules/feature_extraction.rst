@@ -439,7 +439,7 @@ class::
   >>> from sklearn.feature_extraction.text import TfidfTransformer
   >>> transformer = TfidfTransformer(smooth_idf=False)
   >>> transformer   # doctest: +NORMALIZE_WHITESPACE +ELLIPSIS
-  TfidfTransformer(norm=...'l2', smooth_idf=False, sublinear_tf=False,
+  TfidfTransformer(dtype=..., norm=...'l2', smooth_idf=False, sublinear_tf=False,
                    use_idf=True)
 
 Again please see the :ref:`reference documentation
@@ -916,7 +916,7 @@ Some tips and tricks:
     (Note that this will not filter out punctuation.)
 
 
-    The following example will, for instance, transform some British spelling 
+    The following example will, for instance, transform some British spelling
     to American spelling::
 
         >>> import re
