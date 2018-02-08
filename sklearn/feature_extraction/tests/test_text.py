@@ -1,6 +1,9 @@
 from __future__ import unicode_literals
 import warnings
 
+import pytest
+from scipy.sparse import rand
+
 from sklearn.feature_extraction.text import strip_tags
 from sklearn.feature_extraction.text import strip_accents_unicode
 from sklearn.feature_extraction.text import strip_accents_ascii
@@ -995,3 +998,29 @@ def test_vectorizer_string_object_as_input():
             ValueError, message, vec.fit, "hello world!")
         assert_raise_message(
             ValueError, message, vec.transform, "hello world!")
+
+
+@pytest.mark.parametrize(
+    "data_dtype, output_dtype",
+    [(np.float32, np.float32),
+     (np.float64, np.float64)])
+def test_tfidf_transformer_type(data_dtype, output_dtype):
+    # X = rand(10, 20000, dtype=data_dtype, random_state=42)
+    from scipy import sparse
+    X = rand(10, 20000, format='csr', dtype=data_dtype)
+    X = sparse.csr_matrix(X)
+    X_trans = TfidfTransformer().fit_transform(X)
+    assert X_trans.dtype == output_dtype
+
+
+@pytest.mark.parametrize(
+    "vectorizer_dtype, output_dtype",
+    [(np.int32, np.float64),
+     (np.int64, np.float64),
+     (np.float32, np.float32),
+     (np.float64, np.float64)])
+def test_tfidf_vectorizer_type(vectorizer_dtype, output_dtype):
+    X = np.array(["numpy", "scipy", "sklearn"])
+    vectorizer = TfidfVectorizer(dtype=vectorizer_dtype)
+    X_idf = vectorizer.fit_transform(X)
+    assert X_idf.dtype == output_dtype
