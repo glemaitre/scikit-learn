@@ -11,7 +11,7 @@
 The :mod:`sklearn.feature_extraction.text` submodule gathers utilities to
 build feature vectors from text documents.
 """
-from __future__ import unicode_literals
+from __future__ import unicode_literals, division
 
 import array
 from collections import Mapping, defaultdict
