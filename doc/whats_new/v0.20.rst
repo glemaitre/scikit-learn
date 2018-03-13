@@ -63,6 +63,11 @@ Classifiers and regressors
 - Added :class:`multioutput.RegressorChain` for multi-target
   regression. :issue:`9257` by :user:`Kumar Ashutosh <thechargedneutron>`.
 
+- Added :class:`ensemble.StackingTransformer` and helper function
+  :func:`ensemble.make_stack_layer` which implements an approach to Stacked
+  Generalization using cross validation predictions.
+  :issue:`8960` by :user:`Caio Oliveira <caioaao>`.
+
 Preprocessing
 
 - Added :class:`preprocessing.CategoricalEncoder`, which allows to encode

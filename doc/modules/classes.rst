@@ -392,10 +392,13 @@ Samples generator
    ensemble.RandomForestRegressor
    ensemble.RandomTreesEmbedding
    ensemble.VotingClassifier
+   ensemble.StackingTransformer
 
 .. autosummary::
    :toctree: generated/
    :template: function.rst
+
+   ensemble.make_stack_layer
 
 
 partial dependence
