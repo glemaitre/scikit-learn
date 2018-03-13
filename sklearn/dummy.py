@@ -340,6 +340,7 @@ class DummyRegressor(BaseEstimator, RegressorMixin):
           provided with the quantile parameter.
         * "constant": always predicts a constant value that is provided by
           the user.
+        * "input": always predicts the input.
 
     constant : int or float or array of shape = [n_outputs]
         The explicit constant as predicted by the "constant" strategy. This
@@ -386,9 +387,11 @@ class DummyRegressor(BaseEstimator, RegressorMixin):
         -------
         self : object
         """
-        if self.strategy not in ("mean", "median", "quantile", "constant"):
+        if self.strategy not in ("mean", "median", "quantile", "constant",
+                                 "input"):
             raise ValueError("Unknown strategy type: %s, expected "
-                             "'mean', 'median', 'quantile' or 'constant'"
+                             "'mean', 'median', 'quantile', 'constant', or "
+                             "'input'"
                              % self.strategy)
 
         y = check_array(y, ensure_2d=False)
@@ -442,7 +445,11 @@ class DummyRegressor(BaseEstimator, RegressorMixin):
 
             self.constant_ = self.constant
 
-        self.constant_ = np.reshape(self.constant_, (1, -1))
+        elif self.strategy == "input":
+            self.constant_ = None
+
+        if self.constant_ is not None:
+            self.constant_ = np.reshape(self.constant_, (1, -1))
         return self
 
     def predict(self, X, return_std=False):
@@ -469,8 +476,12 @@ class DummyRegressor(BaseEstimator, RegressorMixin):
         check_is_fitted(self, "constant_")
         n_samples = _num_samples(X)
 
-        y = np.ones((n_samples, self.n_outputs_)) * self.constant_
         y_std = np.zeros((n_samples, self.n_outputs_))
+
+        if self.constant_ is not None:
+            y = np.ones((n_samples, self.n_outputs_)) * self.constant_
+        else:
+            y = X
 
         if self.n_outputs_ == 1 and not self.output_2d_:
             y = np.ravel(y)
