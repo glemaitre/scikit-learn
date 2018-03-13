@@ -220,9 +220,13 @@ FeatureUnion: composite feature spaces
 :class:`FeatureUnion` combines several transformer objects into a new
 transformer that combines their output. A :class:`FeatureUnion` takes
 a list of transformer objects. During fitting, each of these
-is fit to the data independently. For transforming data, the
-transformers are applied in parallel, and the sample vectors they output
-are concatenated end-to-end into larger vectors.
+is fit to the data independently. The transformers are applied in parallel,
+and the feature matrices they output are concatenated side-by-side into a
+larger matrix.
+
+When you want to apply different transformations to each field of the data,
+see the related class :class:`sklearn.experimental.ColumnTransformer`
+(see :ref:`user guide <column_transformer>`).
 
 :class:`FeatureUnion` serves the same purposes as :class:`Pipeline` -
 convenience and joint parameter estimation and validation.
@@ -273,4 +277,3 @@ and ignored by setting to ``None``::
 .. topic:: Examples:
 
  * :ref:`sphx_glr_auto_examples_plot_feature_stacker.py`
- * :ref:`sphx_glr_auto_examples_hetero_feature_union.py`

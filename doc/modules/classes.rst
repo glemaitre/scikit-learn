@@ -1443,6 +1443,30 @@ Low-level methods
    utils.testing.assert_raise_message
    utils.testing.all_estimators
 
+
+.. _experimental_ref:
+
+:mod:`sklearn.experimental`: Experimental functionality
+=======================================================
+
+.. automodule:: sklearn.experimental
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: sklearn
+
+.. autosummary::
+   :toctree: generated/
+   :template: class.rst
+
+   experimental.ColumnTransformer
+
+.. autosummary::
+   :toctree: generated/
+   :template: function.rst
+
+   experimental.make_column_transformer
+
 Recently deprecated
 ===================
 
