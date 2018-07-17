@@ -269,7 +269,6 @@ def test_classifier_matching():
         assert_array_almost_equal(intercept2, clf.intercept_, decimal=9)
 
 
-@ignore_warnings
 def test_regressor_matching():
     n_samples = 10
     n_features = 5
