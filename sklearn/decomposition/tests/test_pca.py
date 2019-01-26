@@ -606,8 +606,8 @@ def test_pca_score_with_different_solvers():
     digits = datasets.load_digits()
     X_digits = digits.data
 
-    pca_dict = {svd_solver: PCA(n_components=30, svd_solver=svd_solver,
-                                random_state=0)
+    pca_dict = {svd_solver: PCA(n_components=61, svd_solver=svd_solver,
+                                random_state=0, whiten=True)
                 for svd_solver in solver_list}
 
     for pca in pca_dict.values():

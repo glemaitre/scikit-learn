@@ -21,8 +21,8 @@ env:
 matrix:
   include:
     # Latest dependencies on macOS with MKL
-    - env: DISTRIB="conda" PYTHON_VERSION="*" INSTALL_MKL="true"
-           NUMPY_VERSION="*" SCIPY_VERSION="*" CYTHON_VERSION="*"
+    - env: DISTRIB="conda" PYTHON_VERSION="3.6" INSTALL_MKL="true"
+           NUMPY_VERSION="1.14.3" SCIPY_VERSION="1.1.0" CYTHON_VERSION="0.28.2"
            PILLOW_VERSION="*" JOBLIB_VERSION="*" COVERAGE=true
       language: generic
       if: type != cron
