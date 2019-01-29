@@ -11,4 +11,4 @@ build:
     - mkdir tests_sklearn
     - cp setup.cfg tests_sklearn
     - cd tests_sklearn
-    - pytest --showlocals --duration=20 --pyargs --cov sklearn
+    - pytest --showlocals --duration=20 --pyargs --cov sklearn sklearn
