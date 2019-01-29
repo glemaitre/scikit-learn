@@ -7,6 +7,8 @@ build:
   ci:
     - "pip install numpy scipy cython pytest pytest-cov"
     - pip install -e .
-    - bash build_tools/travis/test_script.sh
-    - bash build_tools/travis/test_docs.sh
-    - bash build_tools/travis/test_pytest_soft_dependency.sh
+    - export SKLEARN_SKIP_NETWORK_TESTS=1
+    - mkdir tests_sklearn
+    - cp setup.cfg tests_sklearn
+    - cd tests_sklearn
+    - pytest --showlocals --duration=20 --pyargs --cov sklearn
