@@ -9,7 +9,7 @@ runtime:
 
 build:
   ci:
-    - apt-get install libatlas3-base libatlas=base-dev libatlas-dev
+    - apt-get install libatlas3-base libatlas-base-dev libatlas-dev
     - pip install numpy scipy cython
     - pip install pandas matplotlib pillow
     - pip install pytest pytest-cov
