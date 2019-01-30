@@ -10,7 +10,10 @@ runtime:
 
 build:
   ci:
-    - "pip install numpy scipy cython pytest pytest-cov"
+    - apt-get install libatlas3-base libatlas=base-dev libatlas-dev
+    - pip install numpy scipy cython
+    - pip install pandas matplotlib pillow
+    - pip install pytest pytest-cov
     - pip install -e . --verbose
     - export SKLEARN_SKIP_NETWORK_TESTS=1
     - mkdir tests_sklearn
