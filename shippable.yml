@@ -5,7 +5,9 @@ python:
 
 build:
   ci:
-    - "pip install numpy scipy cython pytest pytest-cov"
+    - pip install numpy scipy cython
+    - pip install pandas matplotlib numpydoc pillow
+    - pip install pytest pytest-cov
     - pip install -e . --verbose
     - export SKLEARN_SKIP_NETWORK_TESTS=1
     - mkdir tests_sklearn
