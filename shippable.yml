@@ -9,13 +9,11 @@ runtime:
 
 build:
   ci:
-    - apt-get install python3-dev
     - apt-get install libatlas3-base libatlas-base-dev libatlas-dev
-    - apt-get install python3-scipy
-    - deactivate
-    - virtualenv --system-site-packages --python=python3 testvenv
-    - source testvenv/bin/activate
+    # cache numpy cython and scipy
+    - pip install numpy --cache-dir=/root/.cache/pip/wheels
     - pip install cython --cache-dir=/root/.cache/pip/wheels
+    - pip install scipy --cache-dir=/root/.cache/pip/wheels
     - pip install pytest pytest-cov
     - pip install -e . --verbose
     - export SKLEARN_SKIP_NETWORK_TESTS=1
