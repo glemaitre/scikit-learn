@@ -4,9 +4,8 @@ python:
   - 3.7
 
 runtime:
-  nodePool:
-    - shippable_shared_aarch64
-    - shippable_shared_aarch32
+  - nodePool: shippable_shared_aarch64
+  - nodePool: shippable_shared_aarch32
 
 build:
   ci:
