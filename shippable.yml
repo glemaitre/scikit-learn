@@ -1,7 +1,7 @@
 language: python
 
 python:
-  - 3.7
+  - 3
 
 runtime:
   - nodePool: shippable_shared_aarch64
@@ -10,8 +10,12 @@ runtime:
 build:
   ci:
     - apt-get install libatlas3-base libatlas-base-dev libatlas-dev
-    - pip install numpy scipy cython
-    - pip install pandas matplotlib pillow
+    - apt-get install python3-scipy
+    - deactivate
+    - virtualenv --system-site-packages --python=python3 testvenv
+    - source testvenv/bin/activate
+    - pip install cython
+    # - pip install pandas matplotlib pillow
     - pip install pytest pytest-cov
     - pip install -e . --verbose
     - export SKLEARN_SKIP_NETWORK_TESTS=1
