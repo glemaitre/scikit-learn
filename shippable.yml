@@ -23,5 +23,5 @@ build:
     - cp setup.cfg tests_sklearn
     - cd tests_sklearn
     - pytest --showlocals --duration=20 --pyargs --cov sklearn sklearn
-    cache: true
-    cache_dir_list: /root/.cache/pip/wheels
+  cache: true
+  cache_dir_list: /root/.cache/pip/wheels
