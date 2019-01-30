@@ -11,16 +11,16 @@ build:
   ci:
     - apt-get install python3-dev
     - apt-get install libatlas3-base libatlas-base-dev libatlas-dev
-    # cache numpy cython and scipy
-    - pip install numpy --cache-dir=/root/.cache/pip/wheels
-    - pip install cython --cache-dir=/root/.cache/pip/wheels
-    - pip install scipy --cache-dir=/root/.cache/pip/wheels
-    - pip install pytest pytest-cov
-    - pip install -e . --verbose
-    - export SKLEARN_SKIP_NETWORK_TESTS=1
-    - mkdir tests_sklearn
-    - cp setup.cfg tests_sklearn
-    - cd tests_sklearn
-    - pytest --showlocals --duration=20 --pyargs --cov sklearn sklearn
+    - apt-get install python3-scipy
+    - pip install cython --cache-dir=/root/.cache/pip/wheels/$SHIPPABLE_NODE_ARCHITECTURE
+    - pip install numpy --cache-dir=/root/.cache/pip/wheels/$SHIPPABLE_NODE_ARCHITECTURE
+    - pip install scipy --cache-dir=/root/.cache/pip/wheels/$SHIPPABLE_NODE_ARCHITECTURE
+    # - pip install pytest pytest-cov
+    # - pip install -e . --verbose
+    # - export SKLEARN_SKIP_NETWORK_TESTS=1
+    # - mkdir tests_sklearn
+    # - cp setup.cfg tests_sklearn
+    # - cd tests_sklearn
+    # - pytest --showlocals --duration=20 --pyargs --cov sklearn sklearn
   cache: true
   cache_dir_list: /root/.cache/pip/wheels
