@@ -9,6 +9,7 @@ runtime:
 
 build:
   ci:
+    - apt-get install python3-dev
     - apt-get install libatlas3-base libatlas-base-dev libatlas-dev
     # cache numpy cython and scipy
     - pip install numpy --cache-dir=/root/.cache/pip/wheels
