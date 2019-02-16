@@ -10,7 +10,13 @@ runtime:
 build:
   ci:
     - apt-get install python3-dev
-    - apt-get install libatlas3-base libatlas-base-dev libatlas-dev
+    - apt-get install libatlas3-base libatlas-base-dev libatlas-dev ccache
+    - ccache -M 512M
+    - export CCACHE_COMPRESS=1
+    - export PATH=/usr/lib/ccache:$PATH
+    - export CC=/usr/lib/ccache/gcc
+	  - export CXX=/usr/lib/ccache/g++
+    - ccache --max-size 100M --show-stats
     - pip install cython --cache-dir=/root/.cache/pip/wheels/$SHIPPABLE_NODE_ARCHITECTURE
     - pip install numpy --cache-dir=/root/.cache/pip/wheels/$SHIPPABLE_NODE_ARCHITECTURE
     - pip install scipy --cache-dir=/root/.cache/pip/wheels/$SHIPPABLE_NODE_ARCHITECTURE
@@ -20,6 +26,8 @@ build:
     - mkdir tests_sklearn
     - cp setup.cfg tests_sklearn
     - cd tests_sklearn
-    - pytest --showlocals --duration=20 --pyargs --cov sklearn sklearn
+    # - pytest --showlocals --duration=20 --pyargs --cov sklearn sklearn
   cache: true
-  cache_dir_list: /root/.cache/pip/wheels
+  cache_dir_list:
+    - /root/.cache/pip/wheels
+    - /root/.ccache
