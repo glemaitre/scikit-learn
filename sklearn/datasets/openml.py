@@ -8,6 +8,7 @@ from contextlib import closing
 from functools import wraps
 import itertools
 from collections.abc import Generator
+from collections import OrderedDict
 
 from urllib.request import urlopen, Request
 
@@ -18,6 +19,7 @@ from ..externals import _arff
 from .base import get_data_home
 from urllib.error import HTTPError
 from ..utils import Bunch
+from ..utils import check_pandas_support  # noqa
 
 __all__ = ['fetch_openml']
 
@@ -263,6 +265,58 @@ def _convert_arff_data(arff_data, col_slice_x, col_slice_y, shape=None):
         raise ValueError('Unexpected Data Type obtained from arff.')
 
 
+def _feature_to_dtype(feature):
+    """Map feature to dtype for pandas DataFrame
+    """
+    if feature["data_type"] == "string":
+        return object
+    elif feature["data_type"] == "nominal":
+        return 'category'
+    # only numeric, integer, real are left
+    elif (feature["number_of_missing_values"] != "0" or
+          feature["data_type"] in ["numeric", "real"]):
+        return np.float64
+    elif feature["data_type"] == "integer":
+        return np.int64
+    raise ValueError("Unsupported feature: {}".format(feature))
+
+
+def _convert_arff_data_dataframe(arrf_data, all_columns, features_dict):
+    """Convert the ARFF object into a pandas DataFrame.
+
+    Parameters
+    ----------
+    arff_data : list or dict
+        as obtained from liac-arff object
+
+    all_columns : list
+        columns to return
+
+    features_dict : OrderedDict
+        map from feature to feature info from openml. This includes
+        columns that are not ignored.
+
+    Returns
+    -------
+    df : pd.DataFrame
+    """
+    check_pandas_support('fetch_openml with return_frame=True')
+    import pandas as pd
+
+    df = pd.DataFrame(arrf_data['data'], columns=list(features_dict.keys()),
+                      dtype=object)
+    df = df[all_columns].copy()
+
+    dtypes = {}
+    for column in all_columns:
+        dtype = _feature_to_dtype(features_dict[column])
+        if dtype == object:
+            continue
+        dtypes[column] = dtype
+
+    return df.astype(dtypes)
+
+
 def _get_data_info_by_name(name, version, data_home):
     """
     Utilizes the openml dataset listing api to find a dataset by
@@ -436,7 +490,8 @@ def _valid_data_column_names(features_list, target_columns):
 
 
 def fetch_openml(name=None, version='active', data_id=None, data_home=None,
-                 target_column='default-target', cache=True, return_X_y=False):
+                 target_column='default-target', cache=True, return_X_y=False,
+                 return_frame=False):
     """Fetch dataset from openml by name or dataset id.
 
     Datasets are uniquely identified by either an integer ID or by a
@@ -489,24 +544,33 @@ def fetch_openml(name=None, version='active', data_id=None, data_home=None,
         If True, returns ``(data, target)`` instead of a Bunch object. See
         below for more information about the `data` and `target` objects.
 
+    return_frame : boolean, default=False
+        If True, returns a Bunch where the data attribute is a pandas
+        DataFrame.
+
     Returns
     -------
 
     data : Bunch
         Dictionary-like object, with attributes:
 
-        data : np.array or scipy.sparse.csr_matrix of floats
+        data : np.array, scipy.sparse.csr_matrix of floats, or pandas Dataframe
             The feature matrix. Categorical features are encoded as ordinals.
-        target : np.array
+            If ``return_frame`` is True, this is a pandas DataFrame.
+        target : np.array or None
             The regression target or classification labels, if applicable.
             Dtype is float if numeric, and object if categorical.
+            If ``return_frame`` is True, this is None.
         DESCR : str
             The full description of the dataset
         feature_names : list
             The names of the dataset columns
-        categories : dict
+        target_names : list
+            The names of the target columns
+        categories : dict or None
             Maps each categorical feature name to a list of values, such
-            that the value encoded as i is ith in the list.
+            that the value encoded as i is ith in the list. If ``return_frame``
+            is True, this is None.
         details : dict
             More metadata from OpenML
 
@@ -568,14 +632,24 @@ def fetch_openml(name=None, version='active', data_id=None, data_home=None,
         warn("OpenML raised a warning on the dataset. It might be "
              "unusable. Warning: {}".format(data_description['warning']))
 
+    return_sparse = False
+    if data_description['format'].lower() == 'sparse_arff':
+        return_sparse = True
+
+    if return_sparse and return_frame:
+        raise ValueError('Cannot return dataframe with sparse data')
+
     # download data features, meta-info about column types
     features_list = _get_data_features(data_id, data_home)
 
-    for feature in features_list:
-        if 'true' in (feature['is_ignore'], feature['is_row_identifier']):
-            continue
-        if feature['data_type'] == 'string':
-            raise ValueError('STRING attributes are not yet supported')
+    if not return_frame:
+        for feature in features_list:
+            if 'true' in (feature['is_ignore'], feature['is_row_identifier']):
+                continue
+            if feature['data_type'] == 'string':
+                raise ValueError('STRING attributes are not supported for '
+                                 'arrays as a return value. Try '
+                                 'return_frame=True')
 
     if target_column == "default-target":
         # determines the default target based on the data feature results
@@ -596,7 +670,8 @@ def fetch_openml(name=None, version='active', data_id=None, data_home=None,
                                             target_column)
 
     # prepare which columns and data types should be returned for the X and y
-    features_dict = {feature['name']: feature for feature in features_list}
+    features_dict = OrderedDict([(feature['name'], feature)
+                                for feature in features_list])
 
     # XXX: col_slice_y should be all nominal or all numeric
     _verify_target_data_type(features_dict, target_column)
@@ -615,10 +690,6 @@ def fetch_openml(name=None, version='active', data_id=None, data_home=None,
                              'columns. '.format(feat['name'], nr_missing))
 
     # determine arff encoding to return
-    return_sparse = False
-    if data_description['format'].lower() == 'sparse_arff':
-        return_sparse = True
-
     if not return_sparse:
         data_qualities = _get_data_qualities(data_id, data_home)
         shape = _get_data_shape(data_qualities)
@@ -631,7 +702,18 @@ def fetch_openml(name=None, version='active', data_id=None, data_home=None,
 
     # obtain the data
     arff = _download_data_arff(data_description['file_id'], return_sparse,
-                               data_home)
+                               data_home, encode_nominal=not return_frame)
+
+    description = "{}\n\nDownloaded from openml.org.".format(
+        data_description.pop('description'))
+
+    if return_frame:
+        all_columns = data_columns + target_column
+        df = _convert_arff_data_dataframe(arff, all_columns, features_dict)
+        return Bunch(data=df, target=None, feature_names=data_columns,
+                     target_names=target_column, DESCR=description,
+                     details=data_description, categories=None,
+                     url="https://www.openml.org/d/{}".format(data_id))
 
     # nominal attributes is a dict mapping from the attribute name to the
     # possible values. Includes also the target column (which will be popped
@@ -656,9 +738,6 @@ def fetch_openml(name=None, version='active', data_id=None, data_home=None,
         raise ValueError('Mix of nominal and non-nominal targets is not '
                          'currently supported')
 
-    description = "{}\n\nDownloaded from openml.org.".format(
-        data_description.pop('description'))
-
     # reshape y back to 1-D array, if there is only 1 target column; back
     # to None if there are not target columns
     if y.shape[1] == 1:
@@ -671,6 +750,7 @@ def fetch_openml(name=None, version='active', data_id=None, data_home=None,
 
     bunch = Bunch(
         data=X, target=y, feature_names=data_columns,
+        target_names=target_column,
         DESCR=description, details=data_description,
         categories=nominal_attributes,
         url="https://www.openml.org/d/{}".format(data_id))
