@@ -1251,6 +1251,7 @@ Model validation
    :template: function.rst
 
    inspection.partial_dependence
+   inspection.permutation_importance
    inspection.plot_partial_dependence
 
 
