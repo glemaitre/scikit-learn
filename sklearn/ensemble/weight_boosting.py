@@ -764,7 +764,8 @@ class AdaBoostClassifier(BaseWeightBoosting, ClassifierMixin):
         """
         if n_classes == 2:
             decision = np.vstack([-decision, decision]).T
-        decision *= 1 / (n_classes - 1)
+            decision /= 2
+        decision /= (n_classes - 1)
         return softmax(decision, copy=False)
 
     def predict_proba(self, X):
