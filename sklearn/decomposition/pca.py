@@ -7,7 +7,7 @@
 #         Denis A. Engemann <denis-alexander.engemann@inria.fr>
 #         Michael Eickenberg <michael.eickenberg@inria.fr>
 #         Giorgio Patrini <giorgio.patrini@anu.edu.au>
-#
+#         Andrew Knyazev <andrew.knyazev@ucdenver.edu>
 # License: BSD 3 clause
 
 from math import log, sqrt
@@ -158,7 +158,7 @@ class PCA(_BasePCA):
         improve the predictive accuracy of the downstream estimators by
         making their data respect some hard-wired assumptions.
 
-    svd_solver : string {'auto', 'full', 'arpack', 'randomized'}
+    svd_solver : string {'auto', 'full', 'arpack', 'randomized', 'lobpcg'}
         auto :
             the solver is selected by a default policy based on `X.shape` and
             `n_components`: if the input data is larger than 500x500 and the
@@ -175,17 +175,23 @@ class PCA(_BasePCA):
             0 < n_components < min(X.shape)
         randomized :
             run randomized SVD by the method of Halko et al.
+        lobpcg :
+            run Locally Optimal Block Preconditioned Conjugate Gradient
+            (LOBPCG) by Knyazev 2001 for a normal matrix X'*X or X*X',
+            whichever of the two is of the smallest size.
 
         .. versionadded:: 0.18.0
 
     tol : float >= 0, optional (default .0)
-        Tolerance for singular values computed by svd_solver == 'arpack'.
+        Tolerance for singular values computed by svd_solver == 'arpack' or
+        svd_solver == 'lobpcg'. tol = .0 in svd_solver == 'lobpcg' is ignored
+        and substituted by a local default in LOBPCG.
 
         .. versionadded:: 0.18.0
 
     iterated_power : int >= 0, or 'auto', (default 'auto')
-        Number of iterations for the power method computed by
-        svd_solver == 'randomized'.
+        Number of iterations of svd_solver = 'lobpcg' or for the power method
+        computed by svd_solver == 'randomized'.
 
         .. versionadded:: 0.18.0
 
@@ -193,7 +199,8 @@ class PCA(_BasePCA):
         If int, random_state is the seed used by the random number generator;
         If RandomState instance, random_state is the random number generator;
         If None, the random number generator is the RandomState instance used
-        by `np.random`. Used when ``svd_solver`` == 'arpack' or 'randomized'.
+        by `np.random` in
+        ``svd_solver`` == 'arpack', 'randomized', or 'lobpcg'.
 
         .. versionadded:: 0.18.0
 
@@ -269,6 +276,11 @@ class PCA(_BasePCA):
     *Martinsson, P. G., Rokhlin, V., and Tygert, M. (2011).
     "A randomized algorithm for the decomposition of matrices".
     Applied and Computational Harmonic Analysis, 30(1), 47-68.*
+
+    For svd_solver == 'lobpcg', see: :func:`utils.extmath.lobpcg_svd`
+    `Andrew V. Knyazev (2001). "Toward the Optimal Preconditioned Eigensolver:
+    Locally Optimal Block Preconditioned Conjugate Gradient Method". SINUM.`
+    See https://doi.org/10.1137%2FS1064827500366124
 
 
     Examples
@@ -354,7 +366,7 @@ class PCA(_BasePCA):
         X_new : array-like, shape (n_samples, n_components)
 
         """
-        U, S, V = self._fit(X)
+        U, S, _ = self._fit(X)
         U = U[:, :self.n_components_]
 
         if self.whiten:
@@ -395,6 +407,7 @@ class PCA(_BasePCA):
                 self._fit_svd_solver = 'full'
             elif n_components >= 1 and n_components < .8 * min(X.shape):
                 self._fit_svd_solver = 'randomized'
+            # need to add 'lobpcg' here
             # This is also the case of n_components in (0,1)
             else:
                 self._fit_svd_solver = 'full'
@@ -402,7 +415,7 @@ class PCA(_BasePCA):
         # Call different fits for either full or truncated SVD
         if self._fit_svd_solver == 'full':
             return self._fit_full(X, n_components)
-        elif self._fit_svd_solver in ['arpack', 'randomized']:
+        elif self._fit_svd_solver in ['arpack', 'randomized', 'lobpcg']:
             return self._fit_truncated(X, n_components, self._fit_svd_solver)
         else:
             raise ValueError("Unrecognized svd_solver='{0}'"
@@ -472,8 +485,8 @@ class PCA(_BasePCA):
         return U, S, V
 
     def _fit_truncated(self, X, n_components, svd_solver):
-        """Fit the model by computing truncated SVD (by ARPACK or randomized)
-        on X
+        """Fit the model by computing truncated SVD
+        (by ARPACK, randomized, or LOBPCG) on X
         """
         n_samples, n_features = X.shape
 
@@ -521,6 +534,14 @@ class PCA(_BasePCA):
                                      n_iter=self.iterated_power,
                                      flip_sign=True,
                                      random_state=random_state)
+
+        elif svd_solver == 'lobpcg':
+            # sign flipping is done inside
+            U, S, V = randomized_svd(
+                X, n_components=n_components, n_iter=self.iterated_power,
+                flip_sign=True, random_state=random_state,
+                preconditioner='lobpcg', tol=self.tol
+            )
 
         self.n_samples_, self.n_features_ = n_samples, n_features
         self.components_ = V

@@ -9,17 +9,30 @@ Extended math utilities.
 #          Stefan van der Walt
 #          Kyle Kastner
 #          Giorgio Patrini
+#          Andrew Knyazev
 # License: BSD 3 clause
 
 import warnings
 
 import numpy as np
 from scipy import linalg, sparse
+from scipy import __version__ as scipy__version__
 
 from . import check_random_state
 from ._logistic_sigmoid import _log_logistic_sigmoid
 from .sparsefuncs_fast import csr_row_norms
 from .validation import check_array
+from scipy.sparse.linalg import aslinearoperator, LinearOperator
+from distutils.version import LooseVersion
+
+
+# TODO: move this in fixes
+if LooseVersion(scipy__version__) >= "1.3":
+    from scipy.sparse.linalg import lobpcg
+else:
+    # Backport of lobpcg functionality from scipy 1.3.0, can be removed
+    # once support for sp_version < (1, 3) is dropped
+    from ..externals._lobpcg import lobpcg
 
 
 def squared_norm(x):
@@ -210,7 +223,7 @@ def randomized_range_finder(A, size, n_iter,
 
     # Perform power iterations with Q to further 'imprint' the top
     # singular vectors of A in Q
-    for i in range(n_iter):
+    for _ in range(n_iter):
         if power_iteration_normalizer == 'none':
             Q = safe_sparse_dot(A, Q)
             Q = safe_sparse_dot(A.T, Q)
@@ -227,15 +240,54 @@ def randomized_range_finder(A, size, n_iter,
     return Q
 
 
+def _compute_orthonormal_lobpcg(M, Q, n_iter, tol, explicit_normal_matrix):
+    """Computes an orthonormal matrix using LOBPCG."""
+    # Determine the normal matrix
+    if explicit_normal_matrix:
+        A = safe_sparse_dot(M, M.T)
+    else:
+        MLO = aslinearoperator(M)
+
+        if hasattr(MLO, 'H'):
+
+            def _matvec(V):
+                return MLO(MLO.H(V))
+
+        else:  # Old SciPy versions.
+            MTLO = aslinearoperator(M.T.conj())
+
+            def _matvec(V):
+                return MLO(MTLO(V))
+
+        Ms0 = M.shape[0]
+        A = LinearOperator(
+            dtype=M.dtype, shape=(Ms0, Ms0), matvec=_matvec, matmat=_matvec
+        )
+
+    # lobpcg computes largest, be default, eigenvalues of the normal matrix
+    # A, given implicitly via LinearOperator or explicitly as dense or sparse
+    _, Q = lobpcg(
+        A, Q, maxiter=n_iter, verbosityLevel=0, tol=tol
+    )
+    del A
+    return Q
+
+
 def randomized_svd(M, n_components, n_oversamples=10, n_iter='auto',
                    power_iteration_normalizer='auto', transpose='auto',
-                   flip_sign=True, random_state=0):
-    """Computes a truncated randomized SVD
+                   flip_sign=True, random_state=0, preconditioner=None,
+                   tol=None, explicit_normal_matrix='auto'):
+    """Computes a truncated randomized SVD, i.e. finds an approximate
+    truncated singular value decomposition using randomization to speed up
+    computations. It is particularly fast on large matrices to extract only
+    a small number of components. It can be quite accurate using even a small
+    number of iterations, if the seeking singular vectors are well
+    approximated by random vectors used to initialize the power iterations.
 
     Parameters
     ----------
     M : ndarray or sparse matrix
-        Matrix to decompose
+        Matrix to decompose.
 
     n_components : int
         Number of singular values and vectors to extract.
@@ -262,6 +314,7 @@ def randomized_svd(M, n_components, n_oversamples=10, n_iter='auto',
         typically 5 or larger), or 'LU' factorization (numerically stable
         but can lose slightly in accuracy). The 'auto' mode applies no
         normalization if `n_iter` <= 2 and switches to LU otherwise.
+        Only used when `preconditioner=None`.
 
         .. versionadded:: 0.18
 
@@ -287,33 +340,71 @@ def randomized_svd(M, n_components, n_oversamples=10, n_iter='auto',
         generator; If None, the random number generator is the RandomState
         instance used by `np.random`.
 
+    preconditioner : None or 'lobpcg', default=None
+        - if None, no eigensolver preconditioner will be used (default);
+        - if 'lobpcg', use LOBPCG as preconditioned eigensolver [4]. It
+          accelerates the computation of the randomized SVD. It leads to more
+          accurate approximations for equal `n_iter`, `n_components`, and
+          `n_oversamples` with a slight additional computational cost. This
+          preconditioner accepts a tolerance parameter.
+
+    tol : None or float, optional (default=None)
+        Optional solver tolerance when using LOBPCG (stopping criterion). By
+        default `tol=n*sqrt(eps)` where `n=min(n_samples, n_features)`. If
+        large enough, the tolerance might take over `n_iter`.
+
+    explicit_normal_matrix : 'auto' or boolean, optional (default='auto')
+        Optional parameter that determines if the normal matrix used by LOBPCG
+        is computed explicitly or implicitly via LinearOperator performing
+        multiplication of the normal matrix and a vector. The latter may be
+        faster for data matrices M of large sizes or sparse. If 'auto', the
+        choice will be done automatically.
+
     Notes
     -----
-    This algorithm finds a (usually very good) approximate truncated
-    singular value decomposition using randomization to speed up the
-    computations. It is particularly fast on large matrices on which
-    you wish to extract only a small number of components. In order to
-    obtain further speed up, `n_iter` can be set <=2 (at the cost of
-    loss of precision).
+    In order to obtain further speed up, `n_iter` can be set <=2
+    (at the cost of loss of precision).
+
+    LOBPCG solver may become numerically unstable if the requested tolerance
+    is unreasonably small and the maximal number of iterations is large.
 
     References
     ----------
-    * Finding structure with randomness: Stochastic algorithms for constructing
-      approximate matrix decompositions
-      Halko, et al., 2009 https://arxiv.org/abs/0909.4061
+    .. [1] Finding structure with randomness: Stochastic algorithms for
+           constructing approximate matrix decompositions, Halko, et al., 2009
+           https://arxiv.org/abs/0909.4061
 
-    * A randomized algorithm for the decomposition of matrices
-      Per-Gunnar Martinsson, Vladimir Rokhlin and Mark Tygert
+    .. [2] A randomized algorithm for the decomposition of matrices,
+           Per-Gunnar Martinsson, Vladimir Rokhlin and Mark Tygert
 
-    * An implementation of a randomized algorithm for principal component
-      analysis
-      A. Szlam et al. 2014
+    .. [3] An implementation of a randomized algorithm for principal component
+           analysis A. Szlam et al. 2014
+
+    .. [4] Toward the Optimal Preconditioned Eigensolver:
+           Locally Optimal Block Preconditioned Conjugate Gradient Method,
+           Andrew V. Knyazev (2001)
+           https://doi.org/10.1137%2FS1064827500366124
     """
     if isinstance(M, (sparse.lil_matrix, sparse.dok_matrix)):
         warnings.warn("Calculating SVD of a {} is expensive. "
                       "csr_matrix is more efficient.".format(
                           type(M).__name__),
                       sparse.SparseEfficiencyWarning)
+
+    if preconditioner not in (None, 'lobpcg'):
+        raise ValueError(
+            "'preconditioner' can be either None or 'lobpcg'. Got {} instead."
+            .format(preconditioner)
+        )
+
+    if preconditioner == 'lobpcg' and explicit_normal_matrix == 'auto':
+        if sparse.issparse(M):
+            explicit_normal_matrix = False
+        elif min(M.shape) > 4000 or min(M.shape) / max(M.shape) > 0.5:
+            explicit_normal_matrix = False
+        else:
+            # Rectangular and small-size data matrix M
+            explicit_normal_matrix = True
 
     random_state = check_random_state(random_state)
     n_random = n_components + n_oversamples
@@ -330,8 +421,17 @@ def randomized_svd(M, n_components, n_oversamples=10, n_iter='auto',
         # this implementation is a bit faster with smaller shape[1]
         M = M.T
 
-    Q = randomized_range_finder(M, n_random, n_iter,
-                                power_iteration_normalizer, random_state)
+    if preconditioner is None:
+        Q = randomized_range_finder(M, n_random, n_iter,
+                                    power_iteration_normalizer, random_state)
+    else:  # using lobpcg preconditioner
+        Q = random_state.normal(size=(M.shape[0], n_random))
+        if M.dtype.kind == 'f':
+            # Ensure f32 is preserved as f32
+            Q = Q.astype(M.dtype, copy=False)
+        Q = _compute_orthonormal_lobpcg(
+            M, Q, n_iter, tol, explicit_normal_matrix
+        )
 
     # project M to the (k + p) dimensional space using the basis vectors
     B = safe_sparse_dot(Q.T, M)
@@ -473,7 +573,7 @@ def cartesian(arrays, out=None):
     if out is None:
         out = np.empty_like(ix, dtype=dtype)
 
-    for n, arr in enumerate(arrays):
+    for n, _ in enumerate(arrays):
         out[:, n] = arrays[n][ix[:, n]]
 
     return out

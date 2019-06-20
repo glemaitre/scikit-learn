@@ -22,7 +22,8 @@ from sklearn.decomposition.pca import _assess_dimension_
 from sklearn.decomposition.pca import _infer_dimension_
 
 iris = datasets.load_iris()
-solver_list = ['full', 'arpack', 'randomized', 'auto']
+solver_list = ['full', 'arpack', 'randomized', 'lobpcg',
+               'auto']
 
 
 def test_pca():
@@ -54,85 +55,43 @@ def test_pca():
     assert_almost_equal(pca.explained_variance_ratio_.sum(), 1.0, 3)
 
 
-def test_pca_arpack_solver():
-    # PCA on dense arrays
-    X = iris.data
-    d = X.shape[1]
-
-    # Loop excluding the extremes, invalid inputs for arpack
-    for n_comp in np.arange(1, d):
-        pca = PCA(n_components=n_comp, svd_solver='arpack', random_state=0)
-
-        X_r = pca.fit(X).transform(X)
-        np.testing.assert_equal(X_r.shape[1], n_comp)
-
-        X_r2 = pca.fit_transform(X)
-        assert_array_almost_equal(X_r, X_r2)
-
-        X_r = pca.transform(X)
-        assert_array_almost_equal(X_r, X_r2)
-
-        # Test get_covariance and get_precision
-        cov = pca.get_covariance()
-        precision = pca.get_precision()
-        assert_array_almost_equal(np.dot(cov, precision),
-                                  np.eye(d), 12)
-
-    pca = PCA(n_components=0, svd_solver='arpack', random_state=0)
-    assert_raises(ValueError, pca.fit, X)
-    # Check internal state
-    assert_equal(pca.n_components,
-                 PCA(n_components=0,
-                     svd_solver='arpack', random_state=0).n_components)
-    assert_equal(pca.svd_solver,
-                 PCA(n_components=0,
-                     svd_solver='arpack', random_state=0).svd_solver)
-
-    pca = PCA(n_components=d, svd_solver='arpack', random_state=0)
-    assert_raises(ValueError, pca.fit, X)
-    assert_equal(pca.n_components,
-                 PCA(n_components=d,
-                     svd_solver='arpack', random_state=0).n_components)
-    assert_equal(pca.svd_solver,
-                 PCA(n_components=0,
-                     svd_solver='arpack', random_state=0).svd_solver)
-
-
-def test_pca_randomized_solver():
+def test_pca_arpack_randomized_lobpcg_solvers():
     # PCA on dense arrays
     X = iris.data
 
-    # Loop excluding the 0, invalid for randomized
-    for n_comp in np.arange(1, X.shape[1]):
-        pca = PCA(n_components=n_comp, svd_solver='randomized', random_state=0)
+    # Loop over 3 solvers
+    for solver in ['arpack', 'randomized', 'lobpcg']:
+        # Loop excluding the 0, invalid for lobpcg
+        for n_comp in np.arange(1, X.shape[1]):
+            pca = PCA(n_components=n_comp, svd_solver=solver, random_state=0)
 
-        X_r = pca.fit(X).transform(X)
-        np.testing.assert_equal(X_r.shape[1], n_comp)
+            X_r = pca.fit(X).transform(X)
+            assert X_r.shape[1] == n_comp
 
-        X_r2 = pca.fit_transform(X)
-        assert_array_almost_equal(X_r, X_r2)
+            X_r2 = pca.fit_transform(X)
+            assert_array_almost_equal(X_r, X_r2)
 
-        X_r = pca.transform(X)
-        assert_array_almost_equal(X_r, X_r2)
+            X_r = pca.transform(X)
+            assert_array_almost_equal(X_r, X_r2)
 
-        # Test get_covariance and get_precision
-        cov = pca.get_covariance()
-        precision = pca.get_precision()
-        assert_array_almost_equal(np.dot(cov, precision),
-                                  np.eye(X.shape[1]), 12)
+            # Test get_covariance and get_precision
+            cov = pca.get_covariance()
+            precision = pca.get_precision()
+            assert_array_almost_equal(np.dot(cov, precision),
+                                      np.eye(X.shape[1]), 12)
 
-    pca = PCA(n_components=0, svd_solver='randomized', random_state=0)
-    assert_raises(ValueError, pca.fit, X)
+        pca = PCA(n_components=0, svd_solver=solver, random_state=0)
+        assert_raises(ValueError, pca.fit, X)
 
-    pca = PCA(n_components=0, svd_solver='randomized', random_state=0)
-    assert_raises(ValueError, pca.fit, X)
-    # Check internal state
-    assert_equal(pca.n_components,
-                 PCA(n_components=0,
-                     svd_solver='randomized', random_state=0).n_components)
-    assert_equal(pca.svd_solver,
-                 PCA(n_components=0,
-                     svd_solver='randomized', random_state=0).svd_solver)
+        pca = PCA(n_components=0, svd_solver=solver, random_state=0)
+        assert_raises(ValueError, pca.fit, X)
+        # Check internal state
+        assert_equal(pca.n_components,
+                     PCA(n_components=0,
+                         svd_solver=solver, random_state=0).n_components)
+        assert_equal(pca.svd_solver,
+                     PCA(n_components=0,
+                         svd_solver=solver, random_state=0).svd_solver)
 
 
 def test_no_empty_slice_warning():
@@ -215,6 +174,12 @@ def test_explained_variance():
     assert_array_almost_equal(pca.explained_variance_ratio_,
                               rpca.explained_variance_ratio_, 1)
 
+    lpca = PCA(n_components=2, svd_solver='lobpcg', random_state=42).fit(X)
+    assert_array_almost_equal(pca.explained_variance_,
+                              lpca.explained_variance_, 1)
+    assert_array_almost_equal(pca.explained_variance_ratio_,
+                              lpca.explained_variance_ratio_, 1)
+
     # compare to empirical variances
     expected_result = np.linalg.eig(np.cov(X, rowvar=False))[0]
     expected_result = sorted(expected_result, reverse=True)[:2]
@@ -236,17 +201,29 @@ def test_explained_variance():
     assert_array_almost_equal(rpca.explained_variance_,
                               expected_result, decimal=1)
 
+    X_lpca = lpca.transform(X)
+    assert_array_almost_equal(lpca.explained_variance_,
+                              np.var(X_lpca, ddof=1, axis=0),
+                              decimal=1)
+    assert_array_almost_equal(lpca.explained_variance_,
+                              expected_result, decimal=1)
+
     # Same with correlated data
     X = datasets.make_classification(n_samples, n_features,
                                      n_informative=n_features-2,
                                      random_state=rng)[0]
 
     pca = PCA(n_components=2).fit(X)
+
     rpca = PCA(n_components=2, svd_solver='randomized',
                random_state=rng).fit(X)
     assert_array_almost_equal(pca.explained_variance_ratio_,
                               rpca.explained_variance_ratio_, 5)
 
+    lpca = PCA(n_components=2, svd_solver='lobpcg',
+               random_state=rng).fit(X)
+    assert_array_almost_equal(pca.explained_variance_ratio_,
+                              lpca.explained_variance_ratio_, 5)
 
 def test_singular_values():
     # Check that the PCA output has the correct singular values
@@ -263,20 +240,25 @@ def test_singular_values():
                random_state=rng).fit(X)
     rpca = PCA(n_components=2, svd_solver='randomized',
                random_state=rng).fit(X)
+    lpca = PCA(n_components=2, svd_solver='lobpcg',
+               random_state=rng).fit(X)
     assert_array_almost_equal(pca.singular_values_, apca.singular_values_, 12)
     assert_array_almost_equal(pca.singular_values_, rpca.singular_values_, 1)
-    assert_array_almost_equal(apca.singular_values_, rpca.singular_values_, 1)
+    assert_array_almost_equal(pca.singular_values_, lpca.singular_values_, 1)
 
     # Compare to the Frobenius norm
     X_pca = pca.transform(X)
     X_apca = apca.transform(X)
     X_rpca = rpca.transform(X)
+    X_lpca = lpca.transform(X)
     assert_array_almost_equal(np.sum(pca.singular_values_**2.0),
                               np.linalg.norm(X_pca, "fro")**2.0, 12)
     assert_array_almost_equal(np.sum(apca.singular_values_**2.0),
                               np.linalg.norm(X_apca, "fro")**2.0, 9)
     assert_array_almost_equal(np.sum(rpca.singular_values_**2.0),
                               np.linalg.norm(X_rpca, "fro")**2.0, 0)
+    assert_array_almost_equal(np.sum(lpca.singular_values_**2.0),
+                              np.linalg.norm(X_lpca, "fro")**2.0, 0)
 
     # Compare to the 2-norms of the score vectors
     assert_array_almost_equal(pca.singular_values_,
@@ -285,6 +267,8 @@ def test_singular_values():
                               np.sqrt(np.sum(X_apca**2.0, axis=0)), 12)
     assert_array_almost_equal(rpca.singular_values_,
                               np.sqrt(np.sum(X_rpca**2.0, axis=0)), 2)
+    assert_array_almost_equal(lpca.singular_values_,
+                              np.sqrt(np.sum(X_lpca**2.0, axis=0)), 2)
 
     # Set the singular values and see what we get back
     rng = np.random.RandomState(0)
@@ -296,6 +280,7 @@ def test_singular_values():
     pca = PCA(n_components=3, svd_solver='full', random_state=rng)
     apca = PCA(n_components=3, svd_solver='arpack', random_state=rng)
     rpca = PCA(n_components=3, svd_solver='randomized', random_state=rng)
+    lpca = PCA(n_components=3, svd_solver='lobpcg', random_state=rng)
     X_pca = pca.fit_transform(X)
 
     X_pca /= np.sqrt(np.sum(X_pca**2.0, axis=0))
@@ -306,9 +291,11 @@ def test_singular_values():
     pca.fit(X_hat)
     apca.fit(X_hat)
     rpca.fit(X_hat)
+    lpca.fit(X_hat)
     assert_array_almost_equal(pca.singular_values_, [3.142, 2.718, 1.0], 14)
     assert_array_almost_equal(apca.singular_values_, [3.142, 2.718, 1.0], 14)
     assert_array_almost_equal(rpca.singular_values_, [3.142, 2.718, 1.0], 14)
+    assert_array_almost_equal(lpca.singular_values_, [3.142, 2.718, 1.0], 14)
 
 
 def test_pca_check_projection():
@@ -356,7 +343,8 @@ def test_pca_validation(solver):
     # parameter raise errors
     X = np.array([[0, 1, 0], [1, 0, 0]])
     smallest_d = 2  # The smallest dimension
-    lower_limit = {'randomized': 1, 'arpack': 1, 'full': 0, 'auto': 0}
+    lower_limit = {'randomized': 1, 'arpack': 1, 'lobpcg': 1,
+                   'full': 0, 'auto': 0}
 
     # We conduct the same test on X.T so that it is invariant to axis.
     for data in [X, X.T]:
@@ -455,6 +443,55 @@ def test_randomized_pca_inverse():
 
     # same as above with whitening (approximate reconstruction)
     pca = PCA(n_components=2, whiten=True, svd_solver='randomized',
+              random_state=0).fit(X)
+    Y = pca.transform(X)
+    Y_inverse = pca.inverse_transform(Y)
+    relative_max_delta = (np.abs(X - Y_inverse) / np.abs(X).mean()).max()
+    assert_less(relative_max_delta, 1e-5)
+
+
+def test_lobpcg_pca_check_projection():
+    # Test that the projection by lobpcg PCA on dense data is correct
+    rng = np.random.RandomState(0)
+    n, p = 100, 3
+    X = rng.randn(n, p) * .1
+    X[:10] += np.array([3, 4, 5])
+    Xt = 0.1 * rng.randn(1, p) + np.array([3, 4, 5])
+
+    Yt = PCA(n_components=2, svd_solver='lobpcg',
+             random_state=0).fit(X).transform(Xt)
+    Yt /= np.sqrt((Yt ** 2).sum())
+
+    assert_almost_equal(np.abs(Yt[0][0]), 1., 1)
+
+
+def test_lobpcg_pca_check_list():
+    # Test that the projection by lobpcg PCA on list data is correct
+    X = [[1.0, 0.0], [0.0, 1.0]]
+    X_transformed = PCA(n_components=1, svd_solver='lobpcg',
+                        random_state=0).fit(X).transform(X)
+    assert_equal(X_transformed.shape, (2, 1))
+    assert_almost_equal(X_transformed.mean(), 0.00, 2)
+    assert_almost_equal(X_transformed.std(), 0.71, 2)
+
+
+def test_lobpcg_pca_inverse():
+    # Test that lobpcg PCA is inversible on dense data
+    rng = np.random.RandomState(0)
+    n, p = 50, 3
+    X = rng.randn(n, p)  # spherical data
+    X[:, 1] *= .00001  # make middle component relatively small
+    X += [5, 4, 3]  # make a large mean
+
+    # same check that we can find the original data from the transformed signal
+    # (since the data is almost of rank n_components)
+    pca = PCA(n_components=2, svd_solver='lobpcg', random_state=0).fit(X)
+    Y = pca.transform(X)
+    Y_inverse = pca.inverse_transform(Y)
+    assert_almost_equal(X, Y_inverse, decimal=2)
+
+    # same as above with whitening (approximate reconstruction)
+    pca = PCA(n_components=2, whiten=True, svd_solver='lobpcg',
               random_state=0).fit(X)
     Y = pca.transform(X)
     Y_inverse = pca.inverse_transform(Y)
@@ -625,6 +662,8 @@ def test_pca_score_with_different_solvers():
     assert_almost_equal(score_dict['full'], score_dict['arpack'])
     assert_almost_equal(score_dict['full'], score_dict['randomized'],
                         decimal=3)
+    assert_almost_equal(score_dict['full'], score_dict['lobpcg'],
+                        decimal=3)
 
 
 def test_pca_zero_noise_variance_edge_cases():
@@ -724,8 +763,8 @@ def check_pca_float_dtype_preservation(svd_solver):
     X_32 = X_64.astype(np.float32)
 
     pca_64 = PCA(n_components=3, svd_solver=svd_solver,
-                 random_state=0).fit(X_64)
-    pca_32 = PCA(n_components=3, svd_solver=svd_solver,
+                 random_state=0, tol=1-10).fit(X_64)
+    pca_32 = PCA(n_components=3, tol=1-5, svd_solver=svd_solver,
                  random_state=0).fit(X_32)
 
     assert pca_64.components_.dtype == np.float64
@@ -745,9 +784,9 @@ def check_pca_int_dtype_upcast_to_double(svd_solver):
     X_i32 = X_i64.astype(np.int32, copy=False)
 
     pca_64 = PCA(n_components=3, svd_solver=svd_solver,
-                 random_state=0).fit(X_i64)
+                 random_state=0, tol=1-10).fit(X_i64)
     pca_32 = PCA(n_components=3, svd_solver=svd_solver,
-                 random_state=0).fit(X_i32)
+                 random_state=0, tol=1-5).fit(X_i32)
 
     assert pca_64.components_.dtype == np.float64
     assert pca_32.components_.dtype == np.float64

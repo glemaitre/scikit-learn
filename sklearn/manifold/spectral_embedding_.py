@@ -10,15 +10,35 @@ import warnings
 import numpy as np
 from scipy import sparse
 from scipy.linalg import eigh
-from scipy.sparse.linalg import eigsh, lobpcg
+from scipy.sparse.linalg import eigsh
 from scipy.sparse.csgraph import connected_components
 from scipy.sparse.csgraph import laplacian as csgraph_laplacian
+from scipy import __version__ as scipy__version__
 
 from ..base import BaseEstimator
 from ..utils import check_random_state, check_array, check_symmetric
 from ..utils.extmath import _deterministic_vector_sign_flip
 from ..metrics.pairwise import rbf_kernel
 from ..neighbors import kneighbors_graph
+
+
+def _parse_version(version_string):
+    version = []
+    for x in version_string.split('.'):
+        try:
+            version.append(int(x))
+        except ValueError:
+            # x may be of the form dev-1ea1592
+            version.append(x)
+    return tuple(version)
+
+
+if _parse_version(scipy__version__) >= (1, 3):
+    from scipy.sparse.linalg import lobpcg
+else:
+    # Backport of lobpcg functionality from scipy 1.3.0, can be removed
+    # once support for sp_version < (1, 3) is dropped
+    from ..externals._lobpcg import lobpcg
 
 
 def _graph_connected_component(graph, node_id):
@@ -177,7 +197,8 @@ def spectral_embedding(adjacency, n_components=8, eigen_solver=None,
 
     eigen_tol : float, optional, default=0.0
         Stopping criterion for eigendecomposition of the Laplacian matrix
-        when using arpack eigen_solver.
+        when using `arpack` or `lobpcg` eigen_solver. tol = .0 in 'lobpcg' is
+        ignored and substituted by a local default in LOBPCG.
 
     norm_laplacian : bool, optional, default=True
         If True, then compute normalized Laplacian.
@@ -320,7 +341,7 @@ def spectral_embedding(adjacency, n_components=8, eigen_solver=None,
             # doesn't behave well in low dimension
             X = random_state.rand(laplacian.shape[0], n_components + 1)
             X[:, 0] = dd.ravel()
-            lambdas, diffusion_map = lobpcg(laplacian, X, tol=1e-15,
+            lambdas, diffusion_map = lobpcg(laplacian, X, tol=1e-12,
                                             largest=False, maxiter=2000)
             embedding = diffusion_map.T[:n_components]
             if norm_laplacian:
