@@ -418,24 +418,121 @@ def test_weight():
         assert f1_score(y_[100:], y_pred) > .3
 
 
-def test_sample_weights():
-    # Test weights on individual samples
-    # TODO: check on NuSVR, OneClass, etc.
-    clf = svm.SVC()
-    clf.fit(X, Y)
-    assert_array_equal(clf.predict([X[2]]), [1.])
+@pytest.mark.parametrize("estimator", [svm.SVC(C=1e-2), svm.NuSVC()])
+def test_svm_classifier_sided_sample_weight(estimator):
+    # fit a linear SVM and check that giving more weight to opposed samples
+    # in the space will flip the decision toward these samples.
+    X = [[-2, 0], [-1, -1], [0, -2], [0, 2], [1, 1], [2, 0]]
+    estimator.set_params(kernel='linear')
 
-    sample_weight = [.1] * 3 + [10] * 3
-    clf.fit(X, Y, sample_weight=sample_weight)
-    assert_array_equal(clf.predict([X[2]]), [2.])
+    # check that with unit weights, a sample is supposed to be predicted on
+    # the boundary
+    sample_weight = [1] * 6
+    estimator.fit(X, Y, sample_weight=sample_weight)
+    y_pred = estimator.decision_function([[-1., 1.]])
+    assert y_pred == pytest.approx(0)
 
+    # give more weights to opposed samples
+    sample_weight = [10., .1, .1, .1, .1, 10]
+    estimator.fit(X, Y, sample_weight=sample_weight)
+    y_pred = estimator.decision_function([[-1., 1.]])
+    assert y_pred < 0
+
+    sample_weight = [1., .1, 10., 10., .1, .1]
+    estimator.fit(X, Y, sample_weight=sample_weight)
+    y_pred = estimator.decision_function([[-1., 1.]])
+    assert y_pred > 0
+
+
+@pytest.mark.parametrize(
+    "estimator",
+    [svm.SVR(C=1e-2), svm.NuSVR(C=1e-2)]
+)
+def test_svm_regressor_sided_sample_weight(estimator):
+    # similar test to test_svm_classifier_sided_sample_weight but for
+    # SVM regressors
+    X = [[-2, 0], [-1, -1], [0, -2], [0, 2], [1, 1], [2, 0]]
+    estimator.set_params(kernel='linear')
+
+    # check that with unit weights, a sample is supposed to be predicted on
+    # the boundary
+    sample_weight = [1] * 6
+    estimator.fit(X, Y, sample_weight=sample_weight)
+    y_pred = estimator.predict([[-1., 1.]])
+    assert y_pred == pytest.approx(1.5)
+
+    # give more weights to opposed samples
+    sample_weight = [10., .1, .1, .1, .1, 10]
+    estimator.fit(X, Y, sample_weight=sample_weight)
+    y_pred = estimator.predict([[-1., 1.]])
+    assert y_pred < 1.5
+
+    sample_weight = [1., .1, 10., 10., .1, .1]
+    estimator.fit(X, Y, sample_weight=sample_weight)
+    y_pred = estimator.predict([[-1., 1.]])
+    assert y_pred > 1.5
+
+
+def test_svm_equivalence_sample_weight_C():
     # test that rescaling all samples is the same as changing C
     clf = svm.SVC()
     clf.fit(X, Y)
     dual_coef_no_weight = clf.dual_coef_
     clf.set_params(C=100)
     clf.fit(X, Y, sample_weight=np.repeat(0.01, len(X)))
-    assert_array_almost_equal(dual_coef_no_weight, clf.dual_coef_)
+    assert_allclose(dual_coef_no_weight, clf.dual_coef_)
+
+
+@pytest.mark.parametrize(
+    "SVM, svm_params",
+    [(svm.SVC, {"kernel": 'linear', "C": 0.5}),
+     (svm.NuSVC, {"kernel": 'linear'}),
+     (svm.SVR, {"kernel": 'linear'}),
+     (svm.NuSVR, {"kernel": 'linear'}),
+     (svm.OneClassSVM, {"kernel": 'linear'})]
+)
+@pytest.mark.parametrize(
+    "sample_weight",
+    [[1] * len(Y), [1, 0, -0.2, 0, 1, -0.2]],
+    ids=['unit-weight', 'sample-weighted']
+)
+def test_svm_unit_sample_weight(SVM, svm_params, sample_weight):
+    # check that passing negative/null sample weight is handled by libsvm
+    # we reweight such that the sample are the opposite and thus the weights of
+    # class 1 and 2 should be equal
+    estimator = SVM(**svm_params)
+    estimator.fit(X, Y, sample_weight=sample_weight)
+    coef = np.abs(estimator.coef_).ravel()
+    assert coef[0] == pytest.approx(coef[1], rel=1e-3)
+
+
+@pytest.mark.parametrize(
+    "estimator", [svm.SVC(C=0.5), svm.NuSVC()], ids=['SVC', 'NuSVC']
+)
+@pytest.mark.parametrize(
+    "sample_weight",
+    [[0, 0, -0.2, 1, 1, 1],
+     [1, 1, 1, 0, -0.2, 0],
+     [0, 0, 0, 0, 0, 0]],
+    ids=['weight-class-1', 'weight-class-2', 'zero-weights']
+)
+def test_svm_classifier_error_sample_weight(estimator, sample_weight):
+    estimator.set_params(kernel='linear')
+    err_msg = "zero/negative weights"
+    with pytest.raises(ValueError, match=err_msg):
+        estimator.fit(X, Y, sample_weight=sample_weight)
+
+
+@pytest.mark.parametrize(
+    "estimator", [svm.SVR(), svm.NuSVR(), svm.OneClassSVM()],
+    ids=['SVR', 'NuSVR', 'OneClassSVM']
+)
+def test_svm_error_null_sample_weight(estimator):
+    estimator.set_params(kernel='linear')
+    sample_weight = [0] * len(Y)
+    err_msg = "zero/negative weights"
+    with pytest.raises(ValueError, match=err_msg):
+        estimator.fit(X, Y, sample_weight=sample_weight)
 
 
 def test_negative_sample_weights():
