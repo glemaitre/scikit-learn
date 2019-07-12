@@ -22,6 +22,7 @@ python -c "import multiprocessing as mp; print('%d CPUs' % mp.cpu_count())"
 pip list
 
 TEST_CMD="python -m pytest --showlocals --durations=20 --junitxml=$JUNITXML"
+TEST_CMD="$TEST_CMD --verbose -s"
 
 if [[ "$COVERAGE" == "true" ]]; then
     export COVERAGE_PROCESS_START="$BUILD_SOURCESDIRECTORY/.coveragerc"
@@ -35,6 +36,8 @@ fi
 if [[ "$PYTHON_VERSION" == "*" ]]; then
     TEST_CMD="$TEST_CMD -n2"
 fi
+
+TEST_CMD="$TEST_CMD -k check_regressors_train"
 
 mkdir -p $TEST_DIR
 cp setup.cfg $TEST_DIR
