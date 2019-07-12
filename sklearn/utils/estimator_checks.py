@@ -1880,6 +1880,8 @@ def check_regressors_train(name, regressor_orig, readonly_memmap=False):
     # and furthermore assumes the presence of outliers, hence
     # skipped
     if not _safe_tags(regressor, "poor_score"):
+        print(regressor.score(X, y_))
+        print(regressor.score(X, y_))
         assert regressor.score(X, y_) > 0.5
 
 
