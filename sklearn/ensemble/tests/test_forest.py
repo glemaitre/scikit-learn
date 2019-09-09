@@ -1421,5 +1421,8 @@ def test_little_tree_with_small_max_samples(name):
     tree1 = est1.estimators_[0].tree_
     tree2 = est2.estimators_[0].tree_
 
+    print(tree1.node_count)
+    print(tree2.node_count)
+
     msg = "Tree without `max_samples` restriction should have more nodes"
     assert tree1.node_count > tree2.node_count, msg
