@@ -5,6 +5,7 @@
 from typing import List, Any
 
 from abc import ABCMeta, abstractmethod
+from collections.abc import Iterable
 from operator import attrgetter
 from functools import update_wrapper
 import numpy as np
@@ -111,7 +112,11 @@ class _IffHasAttrDescriptor:
                 except AttributeError:
                     continue
                 else:
-                    getattr(delegate, self.attribute_name)
+                    if isinstance(delegate, Iterable):
+                        for single_delegate in delegate:
+                            getattr(single_delegate, self.attribute_name)
+                    else:
+                        getattr(delegate, self.attribute_name)
                     break
             else:
                 attrgetter(self.delegate_names[-1])(obj)

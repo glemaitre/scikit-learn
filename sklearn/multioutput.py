@@ -674,7 +674,7 @@ class ClassifierChain(MetaEstimatorMixin, ClassifierMixin, _BaseChain):
                          in enumerate(self.estimators_)]
         return self
 
-    @if_delegate_has_method('base_estimator')
+    @if_delegate_has_method('estimators_')
     def predict_proba(self, X):
         """Predict probability estimates.
 
@@ -703,7 +703,7 @@ class ClassifierChain(MetaEstimatorMixin, ClassifierMixin, _BaseChain):
 
         return Y_prob
 
-    @if_delegate_has_method('base_estimator')
+    @if_delegate_has_method('estimators_')
     def decision_function(self, X):
         """Evaluate the decision_function of the models in the chain.
 
@@ -725,6 +725,8 @@ class ClassifierChain(MetaEstimatorMixin, ClassifierMixin, _BaseChain):
                 X_aug = sp.hstack((X, previous_predictions))
             else:
                 X_aug = np.hstack((X, previous_predictions))
+            print(estimator.classes_)
+            print(estimator.decision_function(X_aug))
             Y_decision_chain[:, chain_idx] = estimator.decision_function(X_aug)
             Y_pred_chain[:, chain_idx] = estimator.predict(X_aug)
 

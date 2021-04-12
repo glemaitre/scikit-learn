@@ -31,7 +31,10 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.dummy import DummyRegressor, DummyClassifier
 from sklearn.pipeline import make_pipeline
 from sklearn.impute import SimpleImputer
-from sklearn.ensemble import StackingRegressor
+from sklearn.ensemble import (
+    StackingClassifier,
+    StackingRegressor,
+)
 
 
 def test_multi_target_regression():
@@ -662,7 +665,8 @@ def test_classifier_chain_tuple_invalid_order():
         chain.fit(X, y)
 
 
-def test_multioutputregressor_ducktypes_fitted_estimator():
+@pytest.mark.parametrize("Regressor", [MultiOutputRegressor, RegressorChain])
+def test_multioutputregressor_ducktypes_fitted_estimator(Regressor):
     """Test that MultiOutputRegressor checks the fitted estimator for
     predict. Non-regression test for #16549."""
     X, y = load_linnerud(return_X_y=True)
@@ -672,7 +676,51 @@ def test_multioutputregressor_ducktypes_fitted_estimator():
         cv=2
     )
 
-    reg = MultiOutputRegressor(estimator=stacker).fit(X, y)
+    reg = Regressor(stacker).fit(X, y)
 
     # Does not raise
     reg.predict(X)
+
+
+@pytest.mark.parametrize(
+    "Classifier", [MultiOutputClassifier, ClassifierChain]
+)
+def test_multiout_clf_delegate_fitted_estimators(Classifier):
+    """Check """
+    stacker = StackingClassifier(
+        estimators=[("sgd", SGDClassifier(random_state=0))],
+        final_estimator=RandomForestClassifier(
+            n_estimators=10, random_state=0
+        ),
+        cv=2,
+    )
+
+    clf = Classifier(stacker).fit(X, y)
+    # smoke tests to check that delegating to estimator that do not expose
+    # predict and predict_proba before fitting will not raise an error
+    clf.predict(X)
+    clf.predict_proba(X)
+    err_msg = "object has no attribute 'decision_function'"
+    with pytest.raises(AttributeError, match=err_msg):
+        clf.decision_function(X)
+
+
+def test_classifierchain_delegate_fitted_estimators():
+    X, y = datasets.make_multilabel_classification(
+        n_samples=12, n_classes=3, random_state=0
+    )
+
+    stacker = StackingClassifier(
+        estimators=[("sgd", SGDClassifier(random_state=0))],
+        final_estimator=LinearSVC(),
+        cv=2,
+    )
+
+    clf = ClassifierChain(stacker).fit(X, y)
+    # smoke tests to check that delegating to estimator that do not expose
+    # predict and predict_proba before fitting will not raise an error
+    clf.predict(X)
+    clf.decision_function(X)
+    err_msg = "object has no attribute 'predict_proba'"
+    with pytest.raises(AttributeError, match=err_msg):
+        clf.predict_proba(X)
