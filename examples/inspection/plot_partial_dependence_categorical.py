@@ -134,6 +134,9 @@ plt.show()
 # Partial dependence of a pair of categorical variable are plotted at a
 # heatmap.
 plot_partial_dependence(
-    rf_pipeline, X, features=[("ExterQual", "HeatingQC")], is_categorical=[(True, True)]
+    rf_pipeline,
+    X,
+    features=[("ExterQual", "HeatingQC")],
+    categorical_features=categorical,
 )
 plt.show()
