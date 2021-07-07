@@ -38,7 +38,7 @@ def plot_partial_dependence(
     kind="average",
     subsample=1000,
     random_state=None,
-    is_categorical=None,
+    categorical_features=None,
 ):
     """Partial dependence (PD) and individual conditional expectation (ICE)
     plots.
@@ -236,10 +236,14 @@ def plot_partial_dependence(
 
         .. versionadded:: 0.24
 
-    is_categorical : list of {boolean, pair of boolean}, default=None
-        Whether each target feature in `features` is categorical or not.
-        The list should be same size as `features`. If `None`, all features
-        are assumed to be continuous.
+    categorical_features : array-like of {bool, int} of shape (n_features) \
+            or shape (n_categorical_features,), default=None.
+        Indicates the categorical features.
+
+        - None : no feature will be considered categorical.
+        - boolean array-like : boolean mask indicating categorical features.
+        - integer array-like : integer indices indicating categorical
+          features.
 
         .. versionadded:: 1.0
 
@@ -358,35 +362,56 @@ def plot_partial_dependence(
                 f"When a floating-point, subsample={subsample} should be in "
                 "the (0, 1) range."
             )
-
-    if is_categorical is None:
-        is_categorical = []
+    is_categorical = []
+    if categorical_features is None or len(categorical_features) == 0:
         for fxs in features:
             cats = (False,) if len(fxs) == 1 else (False, False)
             is_categorical.append(cats)
     else:
-        if len(features) != len(is_categorical):
+        categorical_features = np.asarray(categorical_features)
+        if categorical_features.dtype.kind not in ("i", "b"):
             raise ValueError(
-                "Parameter is_categorical should be the same size as features."
+                "categorical_features must be an array-like of "
+                "bools or array-like of ints."
             )
 
-        tmp_categorical = []
+        n_features = X.shape[1]
+
+        # check for categorical features as indices
+        if categorical_features.dtype.kind == "i":
+            if (
+                np.max(categorical_features) >= n_features
+                or np.min(categorical_features) < 0
+            ):
+                raise ValueError(
+                    "categorical_features set as integer "
+                    "indices must be in [0, n_features - 1]"
+                )
+            for fxs in features:
+                if len(fxs) == 1:
+                    cats = (fxs[0] in categorical_features,)
+                else:
+                    cats = (
+                        fxs[0] in categorical_features,
+                        fxs[1] in categorical_features,
+                    )
+                is_categorical.append(cats)
+        else:
+            if categorical_features.shape[0] != n_features:
+                raise ValueError(
+                    "categorical_features set as a boolean mask "
+                    "must have shape (n_features,), got: "
+                    f"{categorical_features.shape}"
+                )
+            for fxs in features:
+                if len(fxs) == 1:
+                    cats = (categorical_features[fxs[0]],)
+                else:
+                    cats = (categorical_features[fxs[0]], categorical_features[fxs[1]])
+                is_categorical.append(cats)
+
         has_categorical = False
         for cats in is_categorical:
-            if isinstance(cats, bool):
-                cats = (cats,)
-            try:
-                cats = tuple(c for c in cats)
-            except TypeError as e:
-                raise ValueError(
-                    "Each entry in is_categorical must be either a boolean "
-                    "or an iterable of size at most 2."
-                ) from e
-            if not 1 <= np.size(cats) <= 2:
-                raise ValueError(
-                    "Each entry in is_categorical must be either "
-                    "a boolean or an iterable of size at most 2."
-                )
             if np.size(cats) == 2 and (cats[0] != cats[1]):
                 raise ValueError(
                     "Two-way partial dependence plots are not "
@@ -395,8 +420,6 @@ def plot_partial_dependence(
                 )
             if cats[0] is True:
                 has_categorical = True
-            tmp_categorical.append(cats)
-        is_categorical = tmp_categorical
 
         if has_categorical and kind != "average":
             raise ValueError(

@@ -115,9 +115,13 @@ rf_pipeline.fit(X, y)
 # categorical variables.
 
 features_to_plot = ["ExterQual", "HeatingQC", "Street", "HouseStyle"]
-categorical = [X[f].dtype == "O" for f in features_to_plot]
+categorical = [X[f].dtype == "O" for f in list(X)]
 plot_partial_dependence(
-    rf_pipeline, X, features=features_to_plot, is_categorical=categorical, n_cols=2
+    rf_pipeline,
+    X,
+    features=features_to_plot,
+    categorical_features=categorical,
+    n_cols=2,
 )
 fig = plt.gcf()
 plt.subplots_adjust(hspace=0.5)

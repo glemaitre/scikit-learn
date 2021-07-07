@@ -580,32 +580,32 @@ dummy_classification_data = make_classification(random_state=0)
         ),
         (
             dummy_classification_data,
-            {"features": [1, 2], "is_categorical": [True]},
-            "Parameter is_categorical should be the same",
+            {"features": [1, 2], "categorical_features": ["T", "F"]},
+            "categorical_features must be an array-like of",
         ),
         (
             dummy_classification_data,
-            {"features": [(1, 2)], "is_categorical": [True]},
-            "Parameter is_categorical should be the same",
+            {"features": [(1, 2)], "categorical_features": [-1]},
+            "categorical_features set as integer",
         ),
         (
             dummy_classification_data,
-            {"features": [1], "is_categorical": [1]},
-            "Each entry in is_categorical must be either a boolean",
+            {"features": [(1, 2)], "categorical_features": [123]},
+            "categorical_features set as integer",
         ),
         (
             dummy_classification_data,
-            {"features": [1], "is_categorical": [(True, True, True)]},
-            "Each entry in is_categorical must be either a boolean",
+            {"features": [1], "categorical_features": [True, True, True]},
+            "categorical_features set as a boolean mask",
         ),
         (
             dummy_classification_data,
-            {"features": [(1, 2)], "is_categorical": [(True, False)]},
+            {"features": [(1, 2)], "categorical_features": [1]},
             "Two-way partial dependence plots are not",
         ),
         (
             dummy_classification_data,
-            {"features": [1], "is_categorical": [True], "kind": "individual"},
+            {"features": [1], "categorical_features": [1], "kind": "individual"},
             "It is not possible to display individual effects",
         ),
     ],
@@ -662,7 +662,9 @@ def test_plot_partial_dependence_with_categorical(pyplot):
     pipe = make_pipeline(ct, lr)
     pipe.fit(X, y)
 
-    disp = plot_partial_dependence(pipe, X, features=["col"], is_categorical=[True])
+    disp = plot_partial_dependence(
+        pipe, X, features=["col"], categorical_features=[True]
+    )
 
     assert disp.figure_ is pyplot.gcf()
     assert disp.bars_.shape == (1, 1)
