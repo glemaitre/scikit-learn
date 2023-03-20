@@ -32,7 +32,7 @@ class RocCurveDisplay:
         Thresholds used to compute fpr and tpr. It is only used when an averaged ROC
         curve will be displayed.
 
-    roc_auc : float, default=None
+    roc_auc : float or list of floats, default=None
         Area under ROC curve. If None, the roc_auc score is not shown.
 
     estimator_name : str, default=None
@@ -98,6 +98,18 @@ class RocCurveDisplay:
         self.roc_auc = roc_auc
         self.pos_label = pos_label
 
+    @staticmethod
+    def _create_line_kwargs(roc_auc, name, additional_kwargs):
+        line_kwargs = {}
+        if roc_auc is not None and name is not None:
+            line_kwargs["label"] = f"{name} (AUC = {roc_auc:0.2f})"
+        elif roc_auc is not None:
+            line_kwargs["label"] = f"AUC = {roc_auc:0.2f}"
+        elif name is not None:
+            line_kwargs["label"] = name
+        line_kwargs.update(**additional_kwargs)
+        return line_kwargs
+
     def plot(self, ax=None, *, name=None, **kwargs):
         """Plot visualization.
 
@@ -123,28 +135,27 @@ class RocCurveDisplay:
         """
         check_matplotlib_support("RocCurveDisplay.plot")
 
-        name = self.estimator_name if name is None else name
-
-        line_kwargs = {}
-        if self.roc_auc is not None and name is not None:
-            line_kwargs["label"] = f"{name} (AUC = {self.roc_auc:0.2f})"
-        elif self.roc_auc is not None:
-            line_kwargs["label"] = f"AUC = {self.roc_auc:0.2f}"
-        elif name is not None:
-            line_kwargs["label"] = name
-
-        line_kwargs.update(**kwargs)
-
         import matplotlib.pyplot as plt
 
         if ax is None:
             fig, ax = plt.subplots()
 
-        (self.line_,) = ax.plot(self.fpr, self.tpr, **line_kwargs)
+        name = self.estimator_name if name is None else name
+
+        if self.thresholds is None:
+            # plot a single ROC curve
+            line_kwargs = self._create_line_kwargs(self.roc_auc, name, kwargs)
+            (self.line_,) = ax.plot(self.fpr, self.tpr, **line_kwargs)
+        else:
+            # plot several ROC curves obtained by cross-validation
+            for idx, (fpr, tpr, roc_auc) in enumerate(self.fpr, self.tpr, self.roc_auc):
+                line_kwargs = self._create_line_kwargs(roc_auc, name, kwargs)
+                (current_line,) = ax.plot(fpr, tpr, **line_kwargs)
+                self.line_.append(current_line)
+
         info_pos_label = (
             f" (Positive label: {self.pos_label})" if self.pos_label is not None else ""
         )
-
         xlabel = "False Positive Rate" + info_pos_label
         ylabel = "True Positive Rate" + info_pos_label
         ax.set(xlabel=xlabel, ylabel=ylabel)
@@ -410,27 +421,40 @@ class RocCurveDisplay:
                 "The estimators in cv_results['estimator'] must be fitted classifiers."
             )
 
+        fpr_folds, tpr_folds, thresholds_folds, roc_auc_folds = [], [], [], []
         for estimator, test_indices in zip(
             cv_results["estimator"], cv_results["indices"]["test"]
         ):
-            pass
-
-        y_prob = [
-            _get_response(
+            y_true = _safe_indexing(y, test_indices)
+            y_pred = _get_response(
                 _safe_indexing(X, test_indices),
                 estimator,
                 response_method=response_method,
                 pos_label=pos_label,
             )[0]
-            for estimator, test_indices in zip(
-                cv_results["estimator"], cv_results["indices"]["test"]
+
+            fpr, tpr, thresholds = roc_curve(
+                y_true,
+                y_pred,
+                pos_label=pos_label,
+                sample_weight=sample_weight,
+                drop_intermediate=drop_intermediate,
             )
-        ]
-        y_test = [
-            _safe_indexing(y, test_indices)
-            for test_indices in cv_results["indices"]["test"]
-        ]
+            fpr_folds.append(fpr)
+            tpr_folds.append(tpr)
+            thresholds_folds.append(thresholds)
 
         name = (
             name if name is not None else cv_results["estimator"][0].__class__.__name__
         )
+        pos_label = _check_pos_label_consistency(pos_label, y_true)
+
+        viz = RocCurveDisplay(
+            fpr=fpr_folds,
+            tpr=tpr_folds,
+            thresholds=thresholds_folds,
+            roc_auc=roc_auc_folds,
+            estimator_name=name,
+            pos_label=pos_label,
+        )
+        return viz.plot(ax=ax, name=name, **kwargs)
