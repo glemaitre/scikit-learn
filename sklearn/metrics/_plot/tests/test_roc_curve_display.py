@@ -5,13 +5,12 @@ from numpy.testing import assert_allclose
 
 from sklearn.compose import make_column_transformer
 from sklearn.datasets import load_iris
-
 from sklearn.datasets import load_breast_cancer
 from sklearn.exceptions import NotFittedError
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_curve
 from sklearn.metrics import auc
-
+from sklearn.model_selection import cross_validate
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
@@ -249,3 +248,12 @@ def test_plot_roc_curve_pos_label(pyplot, response_method, constructor_name):
 
     assert display.roc_auc == pytest.approx(roc_auc_limit)
     assert np.trapz(display.tpr, display.fpr) == pytest.approx(roc_auc_limit)
+
+
+def test_xxx(data_binary):
+    X, y = data_binary
+    model = make_pipeline(StandardScaler(), LogisticRegression())
+    cv_results = cross_validate(
+        model, X, y, cv=5, return_estimator=True, return_indices=True
+    )
+    display = RocCurveDisplay.from_cv_results(cv_results, X, y)

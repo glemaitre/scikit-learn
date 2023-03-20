@@ -4,7 +4,9 @@ from .. import auc
 from .. import roc_curve
 from .._base import _check_pos_label_consistency
 
-from ...utils import check_matplotlib_support
+from ...base import is_classifier
+from ...utils import check_matplotlib_support, _safe_indexing
+from ...utils.validation import _num_samples
 
 
 class RocCurveDisplay:
@@ -20,11 +22,15 @@ class RocCurveDisplay:
 
     Parameters
     ----------
-    fpr : ndarray
+    fpr : ndarray or list of such arrays
         False positive rate.
 
-    tpr : ndarray
+    tpr : ndarray or list of such arrays
         True positive rate.
+
+    thresholds : ndarray or list of such arrays, default=None
+        Thresholds used to compute fpr and tpr. It is only used when an averaged ROC
+        curve will be displayed.
 
     roc_auc : float, default=None
         Area under ROC curve. If None, the roc_auc score is not shown.
@@ -75,10 +81,20 @@ class RocCurveDisplay:
     >>> plt.show()
     """
 
-    def __init__(self, *, fpr, tpr, roc_auc=None, estimator_name=None, pos_label=None):
+    def __init__(
+        self,
+        *,
+        fpr,
+        tpr,
+        thresholds=None,
+        roc_auc=None,
+        estimator_name=None,
+        pos_label=None,
+    ):
         self.estimator_name = estimator_name
         self.fpr = fpr
         self.tpr = tpr
+        self.thresholds = thresholds
         self.roc_auc = roc_auc
         self.pos_label = pos_label
 
@@ -350,3 +366,71 @@ class RocCurveDisplay:
         )
 
         return viz.plot(ax=ax, name=name, **kwargs)
+
+    @classmethod
+    def from_cv_results(
+        cls,
+        cv_results,
+        X,
+        y,
+        *,
+        sample_weight=None,
+        drop_intermediate=True,
+        response_method="auto",
+        pos_label=None,
+        name=None,
+        ax=None,
+        **kwargs,
+    ):
+        check_matplotlib_support(f"{cls.__name__}.from_cv_results")
+
+        required_keys = {"estimator", "indices"}
+        if not all(key in cv_results for key in required_keys):
+            raise ValueError(
+                "cv_results does not contain one of the following required keys: "
+                f"{required_keys}. Set explicitly the parameters return_estimator=True "
+                "and return_indices=True to the function cross_validate."
+            )
+
+        train_size, test_size = (
+            len(cv_results["indices"]["train"][0]),
+            len(cv_results["indices"]["test"][0]),
+        )
+
+        if _num_samples(X) != train_size + test_size:
+            raise ValueError(
+                "X does not contain the correct number of samples. "
+                f"Expected {train_size + test_size}, got {_num_samples(X)}."
+            )
+
+        # TODO: it should be remove once #23073 is merged since we delegate this check
+        # to `_get_response_values_binary`.
+        if not all(is_classifier(estimator) for estimator in cv_results["estimator"]):
+            raise ValueError(
+                "The estimators in cv_results['estimator'] must be fitted classifiers."
+            )
+
+        for estimator, test_indices in zip(
+            cv_results["estimator"], cv_results["indices"]["test"]
+        ):
+            pass
+
+        y_prob = [
+            _get_response(
+                _safe_indexing(X, test_indices),
+                estimator,
+                response_method=response_method,
+                pos_label=pos_label,
+            )[0]
+            for estimator, test_indices in zip(
+                cv_results["estimator"], cv_results["indices"]["test"]
+            )
+        ]
+        y_test = [
+            _safe_indexing(y, test_indices)
+            for test_indices in cv_results["indices"]["test"]
+        ]
+
+        name = (
+            name if name is not None else cv_results["estimator"][0].__class__.__name__
+        )
