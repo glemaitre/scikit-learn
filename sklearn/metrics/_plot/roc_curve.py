@@ -48,7 +48,12 @@ class RocCurveDisplay:
     Attributes
     ----------
     line_ : matplotlib Artist
-        ROC Curve.
+        ROC Curve. `None` if several curves are displayed. Check `lines_` to
+        get all curves.
+
+    lines_ : ndarray of matplotlib Artists
+        ROC Curves. `None` if only one curve is displayed. Check `line_` to
+        get the main curve.
 
     ax_ : matplotlib Axes
         Axes with ROC Curve.
@@ -100,14 +105,7 @@ class RocCurveDisplay:
 
     @staticmethod
     def _create_line_kwargs(roc_auc, name, additional_kwargs):
-        line_kwargs = {}
-        if roc_auc is not None and name is not None:
-            line_kwargs["label"] = f"{name} (AUC = {roc_auc:0.2f})"
-        elif roc_auc is not None:
-            line_kwargs["label"] = f"AUC = {roc_auc:0.2f}"
-        elif name is not None:
-            line_kwargs["label"] = name
-        line_kwargs.update(**additional_kwargs)
+
         return line_kwargs
 
     def plot(self, ax=None, *, name=None, **kwargs):
@@ -138,20 +136,29 @@ class RocCurveDisplay:
         import matplotlib.pyplot as plt
 
         if ax is None:
-            fig, ax = plt.subplots()
+            _, ax = plt.subplots()
 
         name = self.estimator_name if name is None else name
 
         if self.thresholds is None:
             # plot a single ROC curve
-            line_kwargs = self._create_line_kwargs(self.roc_auc, name, kwargs)
+            line_kwargs = {}
+            if roc_auc is not None and name is not None:
+                line_kwargs["label"] = f"{name} (AUC = {roc_auc:0.2f})"
+            elif roc_auc is not None:
+                line_kwargs["label"] = f"AUC = {roc_auc:0.2f}"
+            elif name is not None:
+                line_kwargs["label"] = name
+            line_kwargs.update(**kwargs)
+
             (self.line_,) = ax.plot(self.fpr, self.tpr, **line_kwargs)
         else:
             # plot several ROC curves obtained by cross-validation
+            self.lines_ = []
             for idx, (fpr, tpr, roc_auc) in enumerate(self.fpr, self.tpr, self.roc_auc):
                 line_kwargs = self._create_line_kwargs(roc_auc, name, kwargs)
                 (current_line,) = ax.plot(fpr, tpr, **line_kwargs)
-                self.line_.append(current_line)
+                self.lines_.append(current_line)
 
         info_pos_label = (
             f" (Positive label: {self.pos_label})" if self.pos_label is not None else ""
