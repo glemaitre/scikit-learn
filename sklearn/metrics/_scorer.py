@@ -501,6 +501,13 @@ def _check_multimetric_scoring(estimator, scoring):
         "greater_is_better": ["boolean"],
         "needs_proba": ["boolean"],
         "needs_threshold": ["boolean"],
+        "response_method": [
+            "auto",
+            "predict_proba",
+            "decision_function",
+            "predict",
+            list,
+        ],
     }
 )
 def make_scorer(
@@ -509,6 +516,7 @@ def make_scorer(
     greater_is_better=True,
     needs_proba=False,
     needs_threshold=False,
+    response_method="auto",
     **kwargs,
 ):
     """Make a scorer from a performance metric or loss function.
@@ -558,6 +566,16 @@ def make_scorer(
         For example `average_precision` or the area under the roc curve
         can not be computed using discrete predictions alone.
 
+    response_method : {"auto", "predict_proba", "decision_function"} or \
+            list of such str, default="auto"
+        Specifies the response method to be used to get predictions from the estimator.
+        Only used if `needs_threshold=True`. If `response_method="auto"`, it is
+        equivalent to pass `["decision_function", "predict_proba"]` to
+        `response_method`. When providing a list, the response method will be tried
+        in the order they appear in the list.
+
+        .. versionadded:: 1.3
+
     **kwargs : additional arguments
         Additional parameters to be passed to `score_func`.
 
@@ -596,6 +614,8 @@ def make_scorer(
     if needs_proba:
         cls = _ProbaScorer
     elif needs_threshold:
+        if response_method == "auto":
+            response_method = ["decision_function", "predict_proba"]
         cls = _ThresholdScorer
     else:
         cls = _PredictScorer
