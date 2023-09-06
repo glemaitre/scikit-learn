@@ -41,16 +41,7 @@ def _check_boundary_response_method(estimator, response_method, class_of_interes
         msg = "Multi-label and multi-output multi-class classifiers are not supported"
         raise ValueError(msg)
 
-    if has_classes and len(estimator.classes_) > 2:
-        if response_method not in {"auto", "predict"} and class_of_interest is None:
-            msg = (
-                "Multiclass classifiers are only supported when response_method is"
-                " 'predict' or 'auto', or you must provide `class_of_interest` to "
-                " select a specific class to plot the decision boundary."
-            )
-            raise ValueError(msg)
-        prediction_method = "predict" if response_method == "auto" else response_method
-    elif response_method == "auto":
+    if response_method == "auto":
         prediction_method = ["decision_function", "predict_proba", "predict"]
     else:
         prediction_method = response_method
@@ -78,7 +69,8 @@ class DecisionBoundaryDisplay:
     xx1 : ndarray of shape (grid_resolution, grid_resolution)
         Second output of :func:`meshgrid <numpy.meshgrid>`.
 
-    response : ndarray of shape (grid_resolution, grid_resolution)
+    response : ndarray of shape (grid_resolution, grid_resolution) or \
+            (grid_resolution, grid_resolution, n_classes)
         Values of the response function.
 
     xlabel : str, default=None
@@ -89,7 +81,7 @@ class DecisionBoundaryDisplay:
 
     Attributes
     ----------
-    surface_ : matplotlib `QuadContourSet` or `QuadMesh`
+    surface_ : matplotlib `QuadContourSet` or `QuadMesh` or list of such objects
         If `plot_method` is 'contour' or 'contourf', `surface_` is a
         :class:`QuadContourSet <matplotlib.contour.QuadContourSet>`. If
         `plot_method` is 'pcolormesh', `surface_` is a
@@ -170,6 +162,7 @@ class DecisionBoundaryDisplay:
             Object that stores computed values.
         """
         check_matplotlib_support("DecisionBoundaryDisplay.plot")
+        import matplotlib as mpl
         import matplotlib.pyplot as plt  # noqa
 
         if plot_method not in ("contourf", "contour", "pcolormesh"):
@@ -181,7 +174,26 @@ class DecisionBoundaryDisplay:
             _, ax = plt.subplots()
 
         plot_func = getattr(ax, plot_method)
-        self.surface_ = plot_func(self.xx0, self.xx1, self.response, **kwargs)
+
+        if self.response.ndim == 2:
+            self.surface_ = plot_func(self.xx0, self.xx1, self.response, **kwargs)
+        else:  # self.response.ndim == 3
+            # create the colormap for each class
+            viridis = mpl.colormaps["viridis"].resampled(self.response.shape[-1])
+
+            self.surface_ = []
+            for class_idx, primary_color in enumerate(viridis.colors):
+                r, g, b, _ = primary_color
+                cmap = mpl.colors.LinearSegmentedColormap.from_list(
+                    f"colormap_{class_idx}", [(1.0, 1.0, 1.0, 1.0), (r, g, b, 1.0)]
+                )
+                response = np.ma.array(
+                    self.response[:, :, class_idx],
+                    mask=~(self.response.argmax(axis=2) == class_idx),
+                )
+                self.surface_.append(
+                    plot_func(self.xx0, self.xx1, response, cmap=cmap, **kwargs)
+                )
 
         if xlabel is not None or not ax.get_xlabel():
             xlabel = self.xlabel if xlabel is None else xlabel
@@ -379,11 +391,16 @@ class DecisionBoundaryDisplay:
             if is_regressor(estimator):
                 raise ValueError("Multi-output regressors are not supported")
 
-            # For the multiclass case, `_get_response_values` returns the response
-            # as-is. Thus, we have a column per class and we need to select the column
-            # corresponding to the positive class.
-            col_idx = np.flatnonzero(estimator.classes_ == class_of_interest)[0]
-            response = response[:, col_idx]
+            if class_of_interest is not None:
+                # For the multiclass case, `_get_response_values` returns the response
+                # as-is. Thus, we have a column per class and we need to select the
+                # column corresponding to the positive class.
+                col_idx = np.flatnonzero(estimator.classes_ == class_of_interest)[0]
+                response = response[:, col_idx].reshape(*xx0.shape)
+            else:
+                response = response.reshape(*xx0.shape, response.shape[-1])
+        else:
+            response = response.reshape(*xx0.shape)
 
         if xlabel is None:
             xlabel = X.columns[0] if hasattr(X, "columns") else ""
@@ -394,7 +411,7 @@ class DecisionBoundaryDisplay:
         display = DecisionBoundaryDisplay(
             xx0=xx0,
             xx1=xx1,
-            response=response.reshape(xx0.shape),
+            response=response,
             xlabel=xlabel,
             ylabel=ylabel,
         )
