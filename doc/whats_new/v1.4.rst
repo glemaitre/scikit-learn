@@ -217,6 +217,10 @@ Changelog
   `kdtree` and `balltree` values will be removed in 1.6.
   :pr:`26744` by :user:`Shreesha Kumar Bhat <Shreesha3112>`.
 
+- |Fix| Raises a proper `ValueError` when `metric="precomputed"` and requested storing
+  centers via the parameter `store_centers`.
+  :pr:`xxx` by :user:`Guillaume Lemaitre <glemaitre>`.
+
 :mod:`sklearn.compose`
 ......................
 
