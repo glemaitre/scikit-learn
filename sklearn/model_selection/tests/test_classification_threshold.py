@@ -925,3 +925,45 @@ def test_fixed_threshold_classifier_equivalence_default(response_method):
     classifier_default_threshold.fit(X, y)
 
     assert_allclose(classifier.predict(X), classifier_default_threshold.predict(X))
+
+
+@pytest.mark.parametrize(
+    "response_method, threshold", [("predict_proba", 0.7), ("decision_function", 2.0)]
+)
+@pytest.mark.parametrize("pos_label", [0, 1])
+def test_fixed_threshold_classifier(response_method, threshold, pos_label):
+    """Check that applying `predict` lead to the same prediction as applying the
+    threshold to the output of the response method.
+    """
+    X, y = make_classification(n_samples=50, random_state=0)
+    logistic_regression = LogisticRegression().fit(X, y)
+    model = FixedThresholdClassifier(
+        estimator=clone(logistic_regression),
+        threshold=threshold,
+        response_method=response_method,
+        pos_label=pos_label,
+    ).fit(X, y)
+
+    # check that the underlying estimator is the same
+    assert_allclose(model.estimator_.coef_, logistic_regression.coef_)
+
+    # emulate the response method that should take into account the `pos_label`
+    if response_method == "predict_proba":
+        y_score = model.predict_proba(X)[:, pos_label]
+    else:  # response_method == "decision_function"
+        y_score = model.decision_function(X)
+        y_score = y_score if pos_label == 1 else -y_score
+
+    # create a mapping from boolean values to class labels
+    map_to_label = np.array([0, 1]) if pos_label == 1 else np.array([1, 0])
+    y_pred_lr = map_to_label[(y_score >= threshold).astype(int)]
+    assert_allclose(model.predict(X), y_pred_lr)
+
+    for method in ("predict_proba", "predict_log_proba", "decision_function"):
+        assert_allclose(
+            getattr(model, method)(X), getattr(logistic_regression, method)(X)
+        )
+        assert_allclose(
+            getattr(model.estimator_, method)(X),
+            getattr(logistic_regression, method)(X),
+        )

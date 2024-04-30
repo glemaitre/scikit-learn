@@ -1,4 +1,3 @@
-from abc import abstractmethod
 from collections.abc import MutableMapping
 from inspect import signature
 from numbers import Integral, Real
@@ -157,11 +156,6 @@ class BaseThresholdClassifier(ClassifierMixin, MetaEstimatorMixin, BaseEstimator
 
         return self
 
-    @abstractmethod
-    def _get_pos_label(self):
-        """Get the positive label."""
-        pass
-
     @property
     def classes_(self):
         """Classes labels."""
@@ -235,6 +229,18 @@ class BaseThresholdClassifier(ClassifierMixin, MetaEstimatorMixin, BaseEstimator
         }
 
 
+def _threshold_scores_to_class_labels(y_score, threshold, classes, pos_label):
+    """Threshold `y_score` and return the associated class labels."""
+    if pos_label is None:
+        map_thresholded_score_to_label = np.array([0, 1])
+    else:
+        pos_label_idx = np.flatnonzero(classes == pos_label)[0]
+        neg_label_idx = np.flatnonzero(classes != pos_label)[0]
+        map_thresholded_score_to_label = np.array([neg_label_idx, pos_label_idx])
+
+    return classes[map_thresholded_score_to_label[(y_score >= threshold).astype(int)]]
+
+
 class FixedThresholdClassifier(BaseThresholdClassifier):
     """Classifier that manually sets the decision threshold.
 
@@ -262,12 +268,9 @@ class FixedThresholdClassifier(BaseThresholdClassifier):
         0 (i.e. the default threshold for `decision_function`).
 
     pos_label : int, float, bool or str, default=None
-        The label of the positive class. Used when `objective_metric` is
-        `"max_tnr_at_tpr_constraint"`"`, `"max_tpr_at_tnr_constraint"`, or a dictionary.
-        When `pos_label=None`, if `y_true` is in `{-1, 1}` or `{0, 1}`,
-        `pos_label` is set to 1, otherwise an error will be raised. When using a
-        scorer, `pos_label` can be passed as a keyword argument to
-        :func:`~sklearn.metrics.make_scorer`.
+        The label of the positive class. Used to process the output of the
+        `response_method` method. When `pos_label=None`, if `y_true` is in `{-1, 1}` or
+        `{0, 1}`, `pos_label` is set to 1, otherwise an error will be raised.
 
     response_method : {"auto", "decision_function", "predict_proba"}, default="auto"
         Methods by the classifier `base_estimator` corresponding to the
@@ -367,10 +370,6 @@ class FixedThresholdClassifier(BaseThresholdClassifier):
         self.estimator_ = clone(self.estimator).fit(X, y, **params)
         return self
 
-    def _get_pos_label(self):
-        """Get the positive label."""
-        return self.pos_label
-
     def predict(self, X):
         """Predict the target of new samples.
 
@@ -419,18 +418,6 @@ class FixedThresholdClassifier(BaseThresholdClassifier):
             method_mapping=MethodMapping().add(callee="fit", caller="fit"),
         )
         return router
-
-
-def _threshold_scores_to_class_labels(y_score, threshold, classes, pos_label):
-    """Threshold `y_score` and return the associated class labels."""
-    if pos_label is None:
-        map_thresholded_score_to_label = np.array([0, 1])
-    else:
-        pos_label_idx = np.flatnonzero(classes == pos_label)[0]
-        neg_label_idx = np.flatnonzero(classes != pos_label)[0]
-        map_thresholded_score_to_label = np.array([neg_label_idx, pos_label_idx])
-
-    return classes[map_thresholded_score_to_label[(y_score >= threshold).astype(int)]]
 
 
 class _CurveScorer(_BaseScorer):
@@ -1116,11 +1103,6 @@ class TunedThresholdClassifierCV(BaseThresholdClassifier):
                 }
 
         return self
-
-    def _get_pos_label(self):
-        """Get the positive label."""
-        # `pos_label` has been validated and is stored in the scorer
-        return self._curve_scorer._get_pos_label()
 
     def predict(self, X):
         """Predict the target of new samples.
