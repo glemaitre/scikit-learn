@@ -23,7 +23,11 @@ from sklearn.metrics import (
     recall_score,
     roc_curve,
 )
-from sklearn.model_selection import StratifiedShuffleSplit, TunedThresholdClassifierCV
+from sklearn.model_selection import (
+    ConstantThresholdClassifier,
+    StratifiedShuffleSplit,
+    TunedThresholdClassifierCV,
+)
 from sklearn.model_selection._classification_threshold import (
     _CurveScorer,
     _fit_and_score_over_thresholds,
@@ -381,18 +385,13 @@ def test_tuned_threshold_classifier_no_binary(data):
         ),
     ],
 )
-@pytest.mark.parametrize("strategy", ["optimum", "constant"])
-def test_tuned_threshold_classifier_conflict_cv_refit(
-    strategy, params, err_type, err_msg
-):
+def test_tuned_threshold_classifier_conflict_cv_refit(params, err_type, err_msg):
     """Check that we raise an informative error message when `cv` and `refit`
     cannot be used together.
     """
     X, y = make_classification(n_samples=100, random_state=0)
     with pytest.raises(err_type, match=err_msg):
-        TunedThresholdClassifierCV(
-            LogisticRegression(), strategy=strategy, **params
-        ).fit(X, y)
+        TunedThresholdClassifierCV(LogisticRegression(), **params).fit(X, y)
 
 
 @pytest.mark.parametrize(
@@ -402,16 +401,18 @@ def test_tuned_threshold_classifier_conflict_cv_refit(
 @pytest.mark.parametrize(
     "response_method", ["predict_proba", "predict_log_proba", "decision_function"]
 )
-@pytest.mark.parametrize("strategy", ["optimum", "constant"])
+@pytest.mark.parametrize(
+    "ThresholdClassifier", [ConstantThresholdClassifier, TunedThresholdClassifierCV]
+)
 def test_tuned_threshold_classifier_estimator_response_methods(
-    estimator, strategy, response_method
+    ThresholdClassifier, estimator, response_method
 ):
     """Check that `TunedThresholdClassifierCV` exposes the same response methods as the
     underlying estimator.
     """
     X, y = make_classification(n_samples=100, random_state=0)
 
-    model = TunedThresholdClassifierCV(estimator, strategy=strategy)
+    model = ThresholdClassifier(estimator=estimator)
     assert hasattr(model, response_method) == hasattr(estimator, response_method)
 
     model.fit(X, y)
