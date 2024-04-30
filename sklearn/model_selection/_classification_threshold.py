@@ -1,3 +1,4 @@
+from abc import abstractmethod
 from collections.abc import MutableMapping
 from inspect import signature
 from numbers import Integral, Real
@@ -149,6 +150,16 @@ class BaseThresholdClassifier(ClassifierMixin, MetaEstimatorMixin, BaseEstimator
 
         return self._fit(X, y, **params)
 
+    @abstractmethod
+    def _get_pos_label(self):
+        """Get the positive label."""
+        pass
+
+    @abstractmethod
+    def _get_decision_threshold(self):
+        """Get the decision threshold."""
+        pass
+
     @property
     def classes_(self):
         """Classes labels."""
@@ -174,7 +185,7 @@ class BaseThresholdClassifier(ClassifierMixin, MetaEstimatorMixin, BaseEstimator
         )
 
         return _threshold_scores_to_class_labels(
-            y_score, self.best_threshold_, self.classes_, pos_label
+            y_score, self._get_decision_threshold(), self.classes_, pos_label
         )
 
     @available_if(_estimator_has("predict_proba"))
@@ -254,7 +265,7 @@ class FixedThresholdClassifier(BaseThresholdClassifier):
 
     Here, the threshold is not optimized and is set to a constant value.
 
-    TODO: add entry to user guide
+    Read more in the :ref:`User Guide <FixedThresholdClassifier>`.
 
     .. versionadded:: 1.5
 
@@ -264,7 +275,7 @@ class FixedThresholdClassifier(BaseThresholdClassifier):
         The classifier, fitted or not, for which we want to optimize
         the decision threshold used during `predict`.
 
-    constant_threshold : float, default=0.5
+    threshold_value : float, default=0.5
         The decision threshold to use when converting posterior probability estimates
         (i.e. output of `predict_proba`) or decision scores (i.e. output of
         `decision_function`) into a class label.
@@ -312,26 +323,45 @@ class FixedThresholdClassifier(BaseThresholdClassifier):
 
     Examples
     --------
-    >>> # TODO: add example
+    >>> from sklearn.datasets import make_classification
+    >>> from sklearn.linear_model import LogisticRegression
+    >>> from sklearn.metrics import confusion_matrix
+    >>> from sklearn.model_selection import FixedThresholdClassifier, train_test_split
+    >>> X, y = make_classification(
+    ...     n_samples=1_000, weights=[0.9, 0.1], class_sep=0.8, random_state=42
+    ... )
+    >>> X_train, X_test, y_train, y_test = train_test_split(
+    ...     X, y, stratify=y, random_state=42
+    ... )
+    >>> classifier = LogisticRegression(random_state=0).fit(X_train, y_train)
+    >>> print(confusion_matrix(y_test, classifier.predict(X_test)))
+    [[217   7]
+     [ 19   7]]
+    >>> classifier_other_threshold = FixedThresholdClassifier(
+    ...     classifier, threshold_value=0.1, response_method="predict_proba"
+    ... ).fit(X_train, y_train)
+    >>> print(confusion_matrix(y_test, classifier_other_threshold.predict(X_test)))
+    [[184  40]
+     [  6  20]]
     """
 
     _parameter_constraints: dict = {
         **BaseThresholdClassifier._parameter_constraints,
-        "constant_threshold": [Real],
+        "threshold_value": [Real],
     }
 
     def __init__(
         self,
         estimator,
         *,
-        constant_threshold=0.5,
+        threshold_value=0.5,
         pos_label=None,
         response_method="auto",
     ):
         super().__init__(
             estimator=estimator, pos_label=pos_label, response_method=response_method
         )
-        self.constant_threshold = constant_threshold
+        self.threshold_value = threshold_value
 
     def _fit(self, X, y, **params):
         """Fit the classifier.
@@ -359,6 +389,10 @@ class FixedThresholdClassifier(BaseThresholdClassifier):
     def _get_pos_label(self):
         """Get the positive label."""
         return self.pos_label
+
+    def _get_decision_threshold(self):
+        """Get the decision threshold."""
+        return self.threshold_value
 
     def get_metadata_routing(self):
         """Get metadata routing of this object.
@@ -1084,6 +1118,10 @@ class TunedThresholdClassifierCV(BaseThresholdClassifier):
         """Get the positive label."""
         # `pos_label` has been validated and is stored in the scorer
         return self._curve_scorer._get_pos_label()
+
+    def _get_decision_threshold(self):
+        """Get the decision threshold."""
+        return self.best_threshold_
 
     def get_metadata_routing(self):
         """Get metadata routing of this object.
