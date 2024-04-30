@@ -8,7 +8,6 @@ from sklearn.datasets import (
     make_classification,
     make_multilabel_classification,
 )
-from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.exceptions import NotFittedError
 from sklearn.linear_model import LogisticRegression
@@ -537,11 +536,8 @@ def test_tuned_threshold_classifier_with_string_targets(response_method, metric)
 
 
 @pytest.mark.usefixtures("enable_slep006")
-@pytest.mark.parametrize("strategy", ["optimum", "constant"])
 @pytest.mark.parametrize("with_sample_weight", [True, False])
-def test_tuned_threshold_classifier_refit(
-    strategy, with_sample_weight, global_random_seed
-):
+def test_tuned_threshold_classifier_refit(with_sample_weight, global_random_seed):
     """Check the behaviour of the `refit` parameter."""
     rng = np.random.RandomState(global_random_seed)
     X, y = make_classification(n_samples=100, random_state=0)
@@ -553,7 +549,7 @@ def test_tuned_threshold_classifier_refit(
 
     # check that `estimator_` if fitted on the full dataset when `refit=True`
     estimator = LogisticRegression().set_fit_request(sample_weight=True)
-    model = TunedThresholdClassifierCV(estimator, strategy=strategy, refit=True).fit(
+    model = TunedThresholdClassifierCV(estimator, refit=True).fit(
         X, y, sample_weight=sample_weight
     )
 
@@ -566,9 +562,9 @@ def test_tuned_threshold_classifier_refit(
     estimator = LogisticRegression().set_fit_request(sample_weight=True)
     estimator.fit(X, y, sample_weight=sample_weight)
     coef = estimator.coef_.copy()
-    model = TunedThresholdClassifierCV(
-        estimator, strategy=strategy, cv="prefit", refit=False
-    ).fit(X, y, sample_weight=sample_weight)
+    model = TunedThresholdClassifierCV(estimator, cv="prefit", refit=False).fit(
+        X, y, sample_weight=sample_weight
+    )
 
     assert model.estimator_ is estimator
     assert_allclose(model.estimator_.coef_, coef)
@@ -578,9 +574,9 @@ def test_tuned_threshold_classifier_refit(
     cv = [
         (np.arange(50), np.arange(50, 100)),
     ]  # single split
-    model = TunedThresholdClassifierCV(
-        estimator, strategy=strategy, cv=cv, refit=False
-    ).fit(X, y, sample_weight=sample_weight)
+    model = TunedThresholdClassifierCV(estimator, cv=cv, refit=False).fit(
+        X, y, sample_weight=sample_weight
+    )
 
     assert model.estimator_ is not estimator
     if with_sample_weight:
@@ -707,16 +703,6 @@ def test_tuned_threshold_classifier_cv_zeros_sample_weights_equivalence():
     assert_allclose(y_pred_with_weights, y_pred_without_weights)
 
 
-def test_tuned_threshold_classifier_error_constant_learner():
-    """Check that we raise an error message when providing an estimator that predicts
-    only a single class."""
-    X, y = make_classification(random_state=0)
-    estimator = DummyClassifier(strategy="constant", constant=1)
-    err_msg = "The provided estimator makes constant predictions."
-    with pytest.raises(ValueError, match=err_msg):
-        TunedThresholdClassifierCV(estimator).fit(X, y)
-
-
 @pytest.mark.parametrize(
     "objective_metric",
     ["max_precision_at_recall_constraint", "max_recall_at_precision_constraint"],
@@ -830,30 +816,6 @@ def test_tuned_threshold_classifier_pos_label_single_metric(pos_label, metric_ty
     assert precision == pytest.approx(model.best_score_, abs=1e-3)
 
 
-@pytest.mark.parametrize(
-    "predict_method",
-    ["predict", "predict_proba", "decision_function", "predict_log_proba"],
-)
-def test_tuned_threshold_classifier_constant_strategy(predict_method):
-    """Check the behavior when `strategy='contant'."""
-    X, y = make_classification(n_samples=100, weights=[0.6, 0.4], random_state=42)
-
-    # With a constant strategy and a threshold at 0.5, we should get the same than the
-    # original model
-    estimator = LogisticRegression().fit(X, y)
-    constant_threshold = 0.5
-    tuned_model = TunedThresholdClassifierCV(
-        estimator, strategy="constant", constant_threshold=constant_threshold
-    ).fit(X, y)
-    assert tuned_model.best_threshold_ == pytest.approx(constant_threshold)
-    for attribute in ("best_score_", "constrained_score_"):
-        assert getattr(tuned_model, attribute) is None
-
-    assert_allclose(
-        getattr(tuned_model, predict_method)(X), getattr(estimator, predict_method)(X)
-    )
-
-
 def test_tuned_threshold_classifier_n_thresholds_array():
     """Check that we can pass an array to `n_thresholds` and it is used as candidate
     threshold internally."""
@@ -872,8 +834,7 @@ def test_tuned_threshold_classifier_n_thresholds_array():
 @pytest.mark.parametrize(
     "params",
     [
-        {"strategy": "constant", "constant_threshold": 0.5},
-        {"strategy": "optimum"},
+        {"objective_metric": "balanced_accuracy"},
         {"objective_metric": "max_tpr_at_tnr_constraint", "constraint_value": 0.5},
         {"objective_metric": "max_tnr_at_tpr_constraint", "constraint_value": 0.5},
         {
