@@ -41,141 +41,6 @@ from ..utils.validation import (
 from ._split import StratifiedShuffleSplit, check_cv
 
 
-def _threshold_scores_to_class_labels(y_score, threshold, classes, pos_label):
-    """Threshold `y_score` and return the associated class labels."""
-    if pos_label is None:
-        map_thresholded_score_to_label = np.array([0, 1])
-    else:
-        pos_label_idx = np.flatnonzero(classes == pos_label)[0]
-        neg_label_idx = np.flatnonzero(classes != pos_label)[0]
-        map_thresholded_score_to_label = np.array([neg_label_idx, pos_label_idx])
-
-    return classes[map_thresholded_score_to_label[(y_score >= threshold).astype(int)]]
-
-
-class _CurveScorer(_BaseScorer):
-    """Scorer taking a continuous response and output a score for each threshold.
-
-    Parameters
-    ----------
-    score_func : callable
-        The score function to use. It will be called as
-        `score_func(y_true, y_pred, **kwargs)`.
-
-    sign : int
-        Either 1 or -1 to returns the score with `sign * score_func(estimator, X, y)`.
-        Thus, `sign` defined if higher scores are better or worse.
-
-    n_thresholds : int or array-like
-        Related to the number of decision thresholds for which we want to compute the
-        score. If an integer, it will be used to generate `n_thresholds` thresholds
-        uniformly distributed between the minimum and maximum predicted scores. If an
-        array-like, it will be used as the thresholds.
-
-    kwargs : dict
-        Additional parameters to pass to the score function.
-
-    response_method : str
-        The method to call on the estimator to get the response values.
-    """
-
-    def __init__(self, score_func, sign, kwargs, n_thresholds, response_method):
-        super().__init__(
-            score_func=score_func,
-            sign=sign,
-            kwargs=kwargs,
-            response_method=response_method,
-        )
-        self._n_thresholds = n_thresholds
-
-    @classmethod
-    def from_scorer(cls, scorer, response_method, n_thresholds, pos_label):
-        """Create a continuous scorer from a normal scorer."""
-        # add `pos_label` if requested by the scorer function
-        scorer_kwargs = {**scorer._kwargs}
-        signature_scoring_func = signature(scorer._score_func)
-        if (
-            "pos_label" in signature_scoring_func.parameters
-            and "pos_label" not in scorer_kwargs
-        ):
-            if pos_label is None:
-                # Since the provided `pos_label` is the default, we need to
-                # use the default value of the scoring function that can be either
-                # `None` or `1`.
-                scorer_kwargs["pos_label"] = signature_scoring_func.parameters[
-                    "pos_label"
-                ].default
-            else:
-                scorer_kwargs["pos_label"] = pos_label
-        # transform a binary metric into a curve metric for all possible decision
-        # thresholds
-        instance = cls(
-            score_func=scorer._score_func,
-            sign=scorer._sign,
-            response_method=response_method,
-            n_thresholds=n_thresholds,
-            kwargs=scorer_kwargs,
-        )
-        # transfer the metadata request
-        instance._metadata_request = scorer._get_metadata_request()
-        return instance
-
-    def _score(self, method_caller, estimator, X, y_true, **kwargs):
-        """Evaluate predicted target values for X relative to y_true.
-
-        Parameters
-        ----------
-        method_caller : callable
-            Returns predictions given an estimator, method name, and other
-            arguments, potentially caching results.
-
-        estimator : object
-            Trained estimator to use for scoring.
-
-        X : {array-like, sparse matrix} of shape (n_samples, n_features)
-            Test data that will be fed to estimator.predict.
-
-        y_true : array-like of shape (n_samples,)
-            Gold standard target values for X.
-
-        **kwargs : dict
-            Other parameters passed to the scorer. Refer to
-            :func:`set_score_request` for more details.
-
-        Returns
-        -------
-        scores : ndarray of shape (n_thresholds,)
-            The scores associated to each threshold.
-
-        potential_thresholds : ndarray of shape (n_thresholds,)
-            The potential thresholds used to compute the scores.
-        """
-        pos_label = self._get_pos_label()
-        y_score = method_caller(
-            estimator, self._response_method, X, pos_label=pos_label
-        )
-
-        scoring_kwargs = {**self._kwargs, **kwargs}
-        if isinstance(self._n_thresholds, Integral):
-            potential_thresholds = np.linspace(
-                np.min(y_score), np.max(y_score), self._n_thresholds
-            )
-        else:
-            potential_thresholds = np.asarray(self._n_thresholds)
-        score_thresholds = [
-            self._sign
-            * self._score_func(
-                y_true,
-                _threshold_scores_to_class_labels(
-                    y_score, th, estimator.classes_, pos_label
-                ),
-                **scoring_kwargs,
-            )
-            for th in potential_thresholds
-        ]
-        return np.array(score_thresholds), potential_thresholds
-
-
 def _estimator_has(attr):
     """Check if we can delegate a method to the underlying estimator.
 
@@ -191,132 +56,6 @@ def _estimator_has(attr):
         return True
 
     return check
-
-
-def _fit_and_score_over_thresholds(
-    classifier,
-    X,
-    y,
-    *,
-    fit_params,
-    train_idx,
-    val_idx,
-    curve_scorer,
-    score_params,
-):
-    """Fit a classifier and compute the scores for different decision thresholds.
-
-    Parameters
-    ----------
-    classifier : estimator instance
-        The classifier to fit and use for scoring. If `classifier` is already fitted,
-        it will be used as is.
-
-    X : {array-like, sparse matrix} of shape (n_samples, n_features)
-        The entire dataset.
-
-    y : array-like of shape (n_samples,)
-        The entire target vector.
-
-    fit_params : dict
-        Parameters to pass to the `fit` method of the underlying classifier.
-
-    train_idx : ndarray of shape (n_train_samples,) or None
-        The indices of the training set. If `None`, `classifier` is expected to be
-        already fitted.
-
-    val_idx : ndarray of shape (n_val_samples,)
-        The indices of the validation set used to score `classifier`. If `train_idx`,
-        the entire set will be used.
-
-    curve_scorer : scorer instance
-        The scorer taking `classifier` and the validation set as input and outputting
-        decision thresholds and scores as a curve. Note that this is different from
-        the usual scorer that output a single score value:
-
-        * when `score_method` is one of the four constraint metrics, the curve scorer
-          will output a curve of two scores parametrized by the decision threshold, e.g.
-          TPR/TNR or precision/recall curves for each threshold;
-        * otherwise, the curve scorer will output a single score value for each
-          threshold.
-
-    score_params : dict
-        Parameters to pass to the `score` method of the underlying scorer.
-
-    Returns
-    -------
-    potential_thresholds : ndarray of shape (n_thresholds,)
-        The decision thresholds used to compute the scores. They are returned in
-        ascending order.
-
-    scores : ndarray of shape (n_thresholds,) or tuple of such arrays
-        The scores computed for each decision threshold. When TPR/TNR or precision/
-        recall are computed, `scores` is a tuple of two arrays.
-    """
-
-    if train_idx is not None:
-        X_train, X_val = _safe_indexing(X, train_idx), _safe_indexing(X, val_idx)
-        y_train, y_val = _safe_indexing(y, train_idx), _safe_indexing(y, val_idx)
-        fit_params_train = _check_method_params(X, fit_params, indices=train_idx)
-        score_params_val = _check_method_params(X, score_params, indices=val_idx)
-        classifier.fit(X_train, y_train, **fit_params_train)
-    else:  # prefit estimator, only a validation set is provided
-        X_val, y_val, score_params_val = X, y, score_params
-
-    if curve_scorer is roc_curve or (
-        isinstance(curve_scorer, _BaseScorer) and curve_scorer._score_func is roc_curve
-    ):
-        fpr, tpr, potential_thresholds = curve_scorer(
-            classifier, X_val, y_val, **score_params_val
-        )
-        # For fpr=0/tpr=0, the threshold is set to `np.inf`. We need to remove it.
-        fpr, tpr, potential_thresholds = fpr[1:], tpr[1:], potential_thresholds[1:]
-        # thresholds are in decreasing order
-        return potential_thresholds[::-1], ((1 - fpr)[::-1], tpr[::-1])
-    elif curve_scorer is precision_recall_curve or (
-        isinstance(curve_scorer, _BaseScorer)
-        and curve_scorer._score_func is precision_recall_curve
-    ):
-        precision, recall, potential_thresholds = curve_scorer(
-            classifier, X_val, y_val, **score_params_val
-        )
-        # thresholds are in increasing order
-        # the last element of the precision and recall is not associated with any
-        # threshold and should be discarded
-        return potential_thresholds, (precision[:-1], recall[:-1])
-    else:
-        scores, potential_thresholds = curve_scorer(
-            classifier, X_val, y_val, **score_params_val
-        )
-    return potential_thresholds, scores
-
-
-def _mean_interpolated_score(target_thresholds, cv_thresholds, cv_scores):
-    """Compute the mean interpolated score across folds by defining common thresholds.
-
-    Parameters
-    ----------
-    target_thresholds : ndarray of shape (n_thresholds,)
-        The thresholds to use to compute the mean score.
-
-    cv_thresholds : ndarray of shape (n_folds, n_thresholds_fold)
-        The thresholds used to compute the scores for each fold.
-
-    cv_scores : ndarray of shape (n_folds, n_thresholds_fold)
-        The scores computed for each threshold for each fold.
-
-    Returns
-    -------
-    mean_score : ndarray of shape (n_thresholds,)
-        The mean score across all folds for each target threshold.
-    """
-    return np.mean(
-        [
-            np.interp(target_thresholds, split_thresholds, split_score)
-            for split_thresholds, split_score in zip(cv_thresholds, cv_scores)
-        ],
-        axis=0,
-    )
 
 
 class BaseThresholdClassifier(ClassifierMixin, MetaEstimatorMixin, BaseEstimator):
@@ -429,7 +168,7 @@ class BaseThresholdClassifier(ClassifierMixin, MetaEstimatorMixin, BaseEstimator
             The predicted class.
         """
         check_is_fitted(self, "estimator_")
-        pos_label = self._get_pos_label()
+        pos_label = self._get_pos_label()  # defined in subclasses
         y_score, _ = _get_response_values_binary(
             self.estimator_, X, self._response_method, pos_label=pos_label
         )
@@ -638,6 +377,267 @@ class FixedThresholdClassifier(BaseThresholdClassifier):
             method_mapping=MethodMapping().add(callee="fit", caller="fit"),
         )
         return router
+
+
+def _threshold_scores_to_class_labels(y_score, threshold, classes, pos_label):
+    """Threshold `y_score` and return the associated class labels."""
+    if pos_label is None:
+        map_thresholded_score_to_label = np.array([0, 1])
+    else:
+        pos_label_idx = np.flatnonzero(classes == pos_label)[0]
+        neg_label_idx = np.flatnonzero(classes != pos_label)[0]
+        map_thresholded_score_to_label = np.array([neg_label_idx, pos_label_idx])
+
+    return classes[map_thresholded_score_to_label[(y_score >= threshold).astype(int)]]
+
+
+class _CurveScorer(_BaseScorer):
+    """Scorer taking a continuous response and output a score for each threshold.
+
+    Parameters
+    ----------
+    score_func : callable
+        The score function to use. It will be called as
+        `score_func(y_true, y_pred, **kwargs)`.
+
+    sign : int
+        Either 1 or -1 to returns the score with `sign * score_func(estimator, X, y)`.
+        Thus, `sign` defined if higher scores are better or worse.
+
+    n_thresholds : int or array-like
+        Related to the number of decision thresholds for which we want to compute the
+        score. If an integer, it will be used to generate `n_thresholds` thresholds
+        uniformly distributed between the minimum and maximum predicted scores. If an
+        array-like, it will be used as the thresholds.
+
+    kwargs : dict
+        Additional parameters to pass to the score function.
+
+    response_method : str
+        The method to call on the estimator to get the response values.
+    """
+
+    def __init__(self, score_func, sign, kwargs, n_thresholds, response_method):
+        super().__init__(
+            score_func=score_func,
+            sign=sign,
+            kwargs=kwargs,
+            response_method=response_method,
+        )
+        self._n_thresholds = n_thresholds
+
+    @classmethod
+    def from_scorer(cls, scorer, response_method, n_thresholds, pos_label):
+        """Create a continuous scorer from a normal scorer."""
+        # add `pos_label` if requested by the scorer function
+        scorer_kwargs = {**scorer._kwargs}
+        signature_scoring_func = signature(scorer._score_func)
+        if (
+            "pos_label" in signature_scoring_func.parameters
+            and "pos_label" not in scorer_kwargs
+        ):
+            if pos_label is None:
+                # Since the provided `pos_label` is the default, we need to
+                # use the default value of the scoring function that can be either
+                # `None` or `1`.
+                scorer_kwargs["pos_label"] = signature_scoring_func.parameters[
+                    "pos_label"
+                ].default
+            else:
+                scorer_kwargs["pos_label"] = pos_label
+        # transform a binary metric into a curve metric for all possible decision
+        # thresholds
+        instance = cls(
+            score_func=scorer._score_func,
+            sign=scorer._sign,
+            response_method=response_method,
+            n_thresholds=n_thresholds,
+            kwargs=scorer_kwargs,
+        )
+        # transfer the metadata request
+        instance._metadata_request = scorer._get_metadata_request()
+        return instance
+
+    def _score(self, method_caller, estimator, X, y_true, **kwargs):
+        """Evaluate predicted target values for X relative to y_true.
+
+        Parameters
+        ----------
+        method_caller : callable
+            Returns predictions given an estimator, method name, and other
+            arguments, potentially caching results.
+
+        estimator : object
+            Trained estimator to use for scoring.
+
+        X : {array-like, sparse matrix} of shape (n_samples, n_features)
+            Test data that will be fed to estimator.predict.
+
+        y_true : array-like of shape (n_samples,)
+            Gold standard target values for X.
+
+        **kwargs : dict
+            Other parameters passed to the scorer. Refer to
+            :func:`set_score_request` for more details.
+
+        Returns
+        -------
+        scores : ndarray of shape (n_thresholds,)
+            The scores associated to each threshold.
+
+        potential_thresholds : ndarray of shape (n_thresholds,)
+            The potential thresholds used to compute the scores.
+        """
+        pos_label = self._get_pos_label()
+        y_score = method_caller(
+            estimator, self._response_method, X, pos_label=pos_label
+        )
+
+        scoring_kwargs = {**self._kwargs, **kwargs}
+        if isinstance(self._n_thresholds, Integral):
+            potential_thresholds = np.linspace(
+                np.min(y_score), np.max(y_score), self._n_thresholds
+            )
+        else:
+            potential_thresholds = np.asarray(self._n_thresholds)
+        score_thresholds = [
+            self._sign
+            * self._score_func(
+                y_true,
+                _threshold_scores_to_class_labels(
+                    y_score, th, estimator.classes_, pos_label
+                ),
+                **scoring_kwargs,
+            )
+            for th in potential_thresholds
+        ]
+        return np.array(score_thresholds), potential_thresholds
+
+
+def _fit_and_score_over_thresholds(
+    classifier,
+    X,
+    y,
+    *,
+    fit_params,
+    train_idx,
+    val_idx,
+    curve_scorer,
+    score_params,
+):
+    """Fit a classifier and compute the scores for different decision thresholds.
+
+    Parameters
+    ----------
+    classifier : estimator instance
+        The classifier to fit and use for scoring. If `classifier` is already fitted,
+        it will be used as is.
+
+    X : {array-like, sparse matrix} of shape (n_samples, n_features)
+        The entire dataset.
+
+    y : array-like of shape (n_samples,)
+        The entire target vector.
+
+    fit_params : dict
+        Parameters to pass to the `fit` method of the underlying classifier.
+
+    train_idx : ndarray of shape (n_train_samples,) or None
+        The indices of the training set. If `None`, `classifier` is expected to be
+        already fitted.
+
+    val_idx : ndarray of shape (n_val_samples,)
+        The indices of the validation set used to score `classifier`. If `train_idx`,
+        the entire set will be used.
+
+    curve_scorer : scorer instance
+        The scorer taking `classifier` and the validation set as input and outputting
+        decision thresholds and scores as a curve. Note that this is different from
+        the usual scorer that output a single score value:
+
+        * when `score_method` is one of the four constraint metrics, the curve scorer
+          will output a curve of two scores parametrized by the decision threshold, e.g.
+          TPR/TNR or precision/recall curves for each threshold;
+        * otherwise, the curve scorer will output a single score value for each
+          threshold.
+
+    score_params : dict
+        Parameters to pass to the `score` method of the underlying scorer.
+
+    Returns
+    -------
+    potential_thresholds : ndarray of shape (n_thresholds,)
+        The decision thresholds used to compute the scores. They are returned in
+        ascending order.
+
+    scores : ndarray of shape (n_thresholds,) or tuple of such arrays
+        The scores computed for each decision threshold. When TPR/TNR or precision/
+        recall are computed, `scores` is a tuple of two arrays.
+    """
+
+    if train_idx is not None:
+        X_train, X_val = _safe_indexing(X, train_idx), _safe_indexing(X, val_idx)
+        y_train, y_val = _safe_indexing(y, train_idx), _safe_indexing(y, val_idx)
+        fit_params_train = _check_method_params(X, fit_params, indices=train_idx)
+        score_params_val = _check_method_params(X, score_params, indices=val_idx)
+        classifier.fit(X_train, y_train, **fit_params_train)
+    else:  # prefit estimator, only a validation set is provided
+        X_val, y_val, score_params_val = X, y, score_params
+
+    if curve_scorer is roc_curve or (
+        isinstance(curve_scorer, _BaseScorer) and curve_scorer._score_func is roc_curve
+    ):
+        fpr, tpr, potential_thresholds = curve_scorer(
+            classifier, X_val, y_val, **score_params_val
+        )
+        # For fpr=0/tpr=0, the threshold is set to `np.inf`. We need to remove it.
+        fpr, tpr, potential_thresholds = fpr[1:], tpr[1:], potential_thresholds[1:]
+        # thresholds are in decreasing order
+        return potential_thresholds[::-1], ((1 - fpr)[::-1], tpr[::-1])
+    elif curve_scorer is precision_recall_curve or (
+        isinstance(curve_scorer, _BaseScorer)
+        and curve_scorer._score_func is precision_recall_curve
+    ):
+        precision, recall, potential_thresholds = curve_scorer(
+            classifier, X_val, y_val, **score_params_val
+        )
+        # thresholds are in increasing order
+        # the last element of the precision and recall is not associated with any
+        # threshold and should be discarded
+        return potential_thresholds, (precision[:-1], recall[:-1])
+    else:
+        scores, potential_thresholds = curve_scorer(
+            classifier, X_val, y_val, **score_params_val
+        )
+    return potential_thresholds, scores
+
+
+def _mean_interpolated_score(target_thresholds, cv_thresholds, cv_scores):
+    """Compute the mean interpolated score across folds by defining common thresholds.
+
+    Parameters
+    ----------
+    target_thresholds : ndarray of shape (n_thresholds,)
+        The thresholds to use to compute the mean score.
+
+    cv_thresholds : ndarray of shape (n_folds, n_thresholds_fold)
+        The thresholds used to compute the scores for each fold.
+
+    cv_scores : ndarray of shape (n_folds, n_thresholds_fold)
+        The scores computed for each threshold for each fold.
+
+    Returns
+    -------
+    mean_score : ndarray of shape (n_thresholds,)
+        The mean score across all folds for each target threshold.
+    """
+    return np.mean(
+        [
+            np.interp(target_thresholds, split_thresholds, split_score)
+            for split_thresholds, split_score in zip(cv_thresholds, cv_scores)
+        ],
+        axis=0,
+    )
 
 
 class TunedThresholdClassifierCV(BaseThresholdClassifier):
