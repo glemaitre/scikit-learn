@@ -109,7 +109,7 @@ class BaseThresholdClassifier(ClassifierMixin, MetaEstimatorMixin, BaseEstimator
         self.response_method = response_method
 
     @_fit_context(
-        # *TunedClassifier*.estimator is not validated yet
+        # *ThresholdClassifier*.estimator is not validated yet
         prefer_skip_nested_validation=False
     )
     def fit(self, X, y, **params):
@@ -273,11 +273,11 @@ class FixedThresholdClassifier(BaseThresholdClassifier):
         `{0, 1}`, `pos_label` is set to 1, otherwise an error will be raised.
 
     response_method : {"auto", "decision_function", "predict_proba"}, default="auto"
-        Methods by the classifier `base_estimator` corresponding to the
+        Methods by the classifier `estimator` corresponding to the
         decision function for which we want to find a threshold. It can be:
 
-        * if `"auto"`, it will try to invoke, for each classifier,
-          `"predict_proba"` or `"decision_function"` in that order.
+        * if `"auto"`, it will try to invoke `"predict_proba"` or `"decision_function"`
+          in that order.
         * otherwise, one of `"predict_proba"` or `"decision_function"`.
           If the method is not implemented by the classifier, it will raise an
           error.
