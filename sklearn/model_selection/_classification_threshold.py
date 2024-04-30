@@ -155,38 +155,10 @@ class BaseThresholdClassifier(ClassifierMixin, MetaEstimatorMixin, BaseEstimator
         """Get the positive label."""
         pass
 
-    @abstractmethod
-    def _get_decision_threshold(self):
-        """Get the decision threshold."""
-        pass
-
     @property
     def classes_(self):
         """Classes labels."""
         return self.estimator_.classes_
-
-    def predict(self, X):
-        """Predict the target of new samples.
-
-        Parameters
-        ----------
-        X : {array-like, sparse matrix} of shape (n_samples, n_features)
-            The samples, as accepted by `estimator.predict`.
-
-        Returns
-        -------
-        class_labels : ndarray of shape (n_samples,)
-            The predicted class.
-        """
-        check_is_fitted(self, "estimator_")
-        pos_label = self._get_pos_label()  # defined in subclasses
-        y_score, _ = _get_response_values_binary(
-            self.estimator_, X, self._response_method, pos_label=pos_label
-        )
-
-        return _threshold_scores_to_class_labels(
-            y_score, self._get_decision_threshold(), self.classes_, pos_label
-        )
 
     @available_if(_estimator_has("predict_proba"))
     def predict_proba(self, X):
@@ -275,10 +247,12 @@ class FixedThresholdClassifier(BaseThresholdClassifier):
         The classifier, fitted or not, for which we want to optimize
         the decision threshold used during `predict`.
 
-    threshold_value : float, default=0.5
+    threshold : {"auto"} or float, default="auto"
         The decision threshold to use when converting posterior probability estimates
         (i.e. output of `predict_proba`) or decision scores (i.e. output of
-        `decision_function`) into a class label.
+        `decision_function`) into a class label. When `"auto"`, the threshold is set
+        to 0.5 if `predict_proba` is used as `response_method`, otherwise it is set to
+        0 (i.e. the default threshold for `decision_function`).
 
     pos_label : int, float, bool or str, default=None
         The label of the positive class. Used when `objective_metric` is
@@ -338,7 +312,7 @@ class FixedThresholdClassifier(BaseThresholdClassifier):
     [[217   7]
      [ 19   7]]
     >>> classifier_other_threshold = FixedThresholdClassifier(
-    ...     classifier, threshold_value=0.1, response_method="predict_proba"
+    ...     classifier, threshold=0.1, response_method="predict_proba"
     ... ).fit(X_train, y_train)
     >>> print(confusion_matrix(y_test, classifier_other_threshold.predict(X_test)))
     [[184  40]
@@ -347,21 +321,21 @@ class FixedThresholdClassifier(BaseThresholdClassifier):
 
     _parameter_constraints: dict = {
         **BaseThresholdClassifier._parameter_constraints,
-        "threshold_value": [Real],
+        "threshold": [Real],
     }
 
     def __init__(
         self,
         estimator,
         *,
-        threshold_value=0.5,
+        threshold=0.5,
         pos_label=None,
         response_method="auto",
     ):
         super().__init__(
             estimator=estimator, pos_label=pos_label, response_method=response_method
         )
-        self.threshold_value = threshold_value
+        self.threshold = threshold
 
     def _fit(self, X, y, **params):
         """Fit the classifier.
@@ -390,9 +364,34 @@ class FixedThresholdClassifier(BaseThresholdClassifier):
         """Get the positive label."""
         return self.pos_label
 
-    def _get_decision_threshold(self):
-        """Get the decision threshold."""
-        return self.threshold_value
+    def predict(self, X):
+        """Predict the target of new samples.
+
+        Parameters
+        ----------
+        X : {array-like, sparse matrix} of shape (n_samples, n_features)
+            The samples, as accepted by `estimator.predict`.
+
+        Returns
+        -------
+        class_labels : ndarray of shape (n_samples,)
+            The predicted class.
+        """
+        check_is_fitted(self, "estimator_")
+        y_score, _, response_method_used = _get_response_values_binary(
+            self.estimator_,
+            X,
+            self._response_method,
+            pos_label=self.pos_label,
+            return_response_method_used=True,
+        )
+
+        if self.threshold == "auto":
+            decision_threshold = 0.5 if response_method_used == "predict_proba" else 0.0
+
+        return _threshold_scores_to_class_labels(
+            y_score, decision_threshold, self.classes_, self.pos_label
+        )
 
     def get_metadata_routing(self):
         """Get metadata routing of this object.
@@ -1119,9 +1118,31 @@ class TunedThresholdClassifierCV(BaseThresholdClassifier):
         # `pos_label` has been validated and is stored in the scorer
         return self._curve_scorer._get_pos_label()
 
-    def _get_decision_threshold(self):
-        """Get the decision threshold."""
-        return self.best_threshold_
+    def predict(self, X):
+        """Predict the target of new samples.
+
+        Parameters
+        ----------
+        X : {array-like, sparse matrix} of shape (n_samples, n_features)
+            The samples, as accepted by `estimator.predict`.
+
+        Returns
+        -------
+        class_labels : ndarray of shape (n_samples,)
+            The predicted class.
+        """
+        check_is_fitted(self, "estimator_")
+        pos_label = self._curve_scorer._get_pos_label()
+        y_score, _ = _get_response_values_binary(
+            self.estimator_,
+            X,
+            self._response_method,
+            pos_label=pos_label,
+        )
+
+        return _threshold_scores_to_class_labels(
+            y_score, self.best_threshold_, self.classes_, pos_label
+        )
 
     def get_metadata_routing(self):
         """Get metadata routing of this object.
