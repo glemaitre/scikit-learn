@@ -532,7 +532,7 @@ def test_tuned_threshold_classifier_with_string_targets(response_method, metric)
     ).fit(X, y)
     assert_array_equal(model.classes_, np.sort(classes))
     y_pred = model.predict(X)
-    assert_array_equal(np.sort(np.unique(y_pred)), np.sort(classes))
+    assert_array_equal(np.unique(y_pred), np.sort(classes))
 
 
 @pytest.mark.usefixtures("enable_slep006")
