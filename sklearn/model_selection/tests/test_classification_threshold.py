@@ -403,7 +403,7 @@ def test_tuned_threshold_classifier_conflict_cv_refit(params, err_type, err_msg)
 @pytest.mark.parametrize(
     "ThresholdClassifier", [FixedThresholdClassifier, TunedThresholdClassifierCV]
 )
-def test_tuned_threshold_classifier_estimator_response_methods(
+def test_threshold_classifier_estimator_response_methods(
     ThresholdClassifier, estimator, response_method
 ):
     """Check that `TunedThresholdClassifierCV` exposes the same response methods as the
@@ -910,3 +910,18 @@ def test_tuned_threshold_classifier_error_missing_constraint(objective_metric):
     )
     with pytest.raises(ValueError, match="`constraint_value` must be provided"):
         tuned_model.fit(X, y)
+
+
+@pytest.mark.parametrize(
+    "response_method", ["auto", "predict_proba", "decision_function"]
+)
+def test_fixed_threshold_classifier_equivalence_default(response_method):
+    """Check that `FixedThresholdClassifier` has the same behaviour as the vanilla
+    classifier.
+    """
+    X, y = make_classification(random_state=0)
+    classifier = LogisticRegression().fit(X, y)
+    classifier_default_threshold = FixedThresholdClassifier(estimator=clone(classifier))
+    classifier_default_threshold.fit(X, y)
+
+    assert_allclose(classifier.predict(X), classifier_default_threshold.predict(X))

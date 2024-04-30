@@ -148,7 +148,14 @@ class BaseThresholdClassifier(ClassifierMixin, MetaEstimatorMixin, BaseEstimator
         else:
             self._response_method = self.response_method
 
-        return self._fit(X, y, **params)
+        self._fit(X, y, **params)
+
+        if hasattr(self.estimator_, "n_features_in_"):
+            self.n_features_in_ = self.estimator_.n_features_in_
+        if hasattr(self.estimator_, "feature_names_in_"):
+            self.feature_names_in_ = self.estimator_.feature_names_in_
+
+        return self
 
     @abstractmethod
     def _get_pos_label(self):
@@ -388,6 +395,8 @@ class FixedThresholdClassifier(BaseThresholdClassifier):
 
         if self.threshold == "auto":
             decision_threshold = 0.5 if response_method_used == "predict_proba" else 0.0
+        else:
+            decision_threshold = self.threshold
 
         return _threshold_scores_to_class_labels(
             y_score, decision_threshold, self.classes_, self.pos_label
@@ -1018,11 +1027,6 @@ class TunedThresholdClassifierCV(BaseThresholdClassifier):
                 )
 
             self.estimator_.fit(X_train, y_train, **fit_params_train)
-
-        if hasattr(self.estimator_, "n_features_in_"):
-            self.n_features_in_ = self.estimator_.n_features_in_
-        if hasattr(self.estimator_, "feature_names_in_"):
-            self.feature_names_in_ = self.estimator_.feature_names_in_
 
         cv_thresholds, cv_scores = zip(
             *Parallel(n_jobs=self.n_jobs)(
