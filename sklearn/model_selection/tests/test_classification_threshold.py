@@ -23,7 +23,7 @@ from sklearn.metrics import (
     roc_curve,
 )
 from sklearn.model_selection import (
-    ConstantThresholdClassifier,
+    FixedThresholdClassifier,
     StratifiedShuffleSplit,
     TunedThresholdClassifierCV,
 )
@@ -401,7 +401,7 @@ def test_tuned_threshold_classifier_conflict_cv_refit(params, err_type, err_msg)
     "response_method", ["predict_proba", "predict_log_proba", "decision_function"]
 )
 @pytest.mark.parametrize(
-    "ThresholdClassifier", [ConstantThresholdClassifier, TunedThresholdClassifierCV]
+    "ThresholdClassifier", [FixedThresholdClassifier, TunedThresholdClassifierCV]
 )
 def test_tuned_threshold_classifier_estimator_response_methods(
     ThresholdClassifier, estimator, response_method

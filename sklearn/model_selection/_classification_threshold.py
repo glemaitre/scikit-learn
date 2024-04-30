@@ -506,7 +506,7 @@ class BaseThresholdClassifier(ClassifierMixin, MetaEstimatorMixin, BaseEstimator
         }
 
 
-class ConstantThresholdClassifier(BaseThresholdClassifier):
+class FixedThresholdClassifier(BaseThresholdClassifier):
     """Classifier that manually sets the decision threshold.
 
     This classifier allows to change the default decision threshold used for
@@ -795,7 +795,7 @@ class TunedThresholdClassifierCV(BaseThresholdClassifier):
 
     See Also
     --------
-    sklearn.model_selection.ConstantThresholdClassifier : Classifier that uses a
+    sklearn.model_selection.FixedThresholdClassifier : Classifier that uses a
         constant threshold.
     sklearn.calibration.CalibratedClassifierCV : Estimator that calibrates
         probabilities.

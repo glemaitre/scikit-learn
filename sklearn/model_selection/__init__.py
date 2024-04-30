@@ -1,7 +1,7 @@
 import typing
 
 from ._classification_threshold import (
-    ConstantThresholdClassifier,
+    FixedThresholdClassifier,
     TunedThresholdClassifierCV,
 )
 from ._plot import LearningCurveDisplay, ValidationCurveDisplay
@@ -67,7 +67,7 @@ __all__ = [
     "StratifiedKFold",
     "StratifiedGroupKFold",
     "StratifiedShuffleSplit",
-    "ConstantThresholdClassifier",
+    "FixedThresholdClassifier",
     "TunedThresholdClassifierCV",
     "check_cv",
     "cross_val_predict",
